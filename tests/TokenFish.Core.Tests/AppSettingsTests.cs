@@ -5,11 +5,11 @@ namespace TokenFish.Core.Tests;
 public sealed class AppSettingsTests
 {
     [Fact]
-    public void DefaultsSelectBothProvidersAndMinimalTheme()
+    public void DefaultsSelectAvailableProviderAndMinimalTheme()
     {
         var settings = new AppSettings();
 
-        Assert.Equal(ProviderSelectionMode.Both, settings.ProviderSelectionMode);
+        Assert.Equal(ProviderSelectionMode.CodexOnly, settings.ProviderSelectionMode);
         Assert.Equal(ThemeMode.Minimal, settings.ThemeMode);
         Assert.Equal(CodexRuntimeMode.WslLoginShell, settings.CodexRuntimeMode);
         Assert.Null(settings.CodexWslDistributionName);

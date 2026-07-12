@@ -41,6 +41,18 @@ public sealed class TokenFishApplicationServicesTests
     }
 
     [Fact]
+    public async Task DefaultCompositionUsesCodexOnlyAndDoesNotRequireClaudeRuntime()
+    {
+        var factory = new RecordingCodexRuntimeFactory();
+
+        await using var services = CreateServices(factory, new AppSettings());
+
+        Assert.Same(factory.Collector, services.CodexUsageCollector);
+        Assert.Equal(1, factory.CreateCallCount);
+        Assert.Equal(0, factory.Collector.CollectCallCount);
+    }
+
+    [Fact]
     public async Task ApplicationCompositionUsesSettingsSelectedLaunchCommand()
     {
         var factory = new RecordingCodexRuntimeFactory();
@@ -97,6 +109,25 @@ public sealed class TokenFishApplicationServicesTests
 
         Assert.Null(services.CodexUsageCollector);
         Assert.Equal(0, factory.CreateCallCount);
+    }
+
+    [Fact]
+    public async Task ExplicitBothStillFailsClearlyWhenClaudeCollectorIsAbsent()
+    {
+        var factory = new RecordingCodexRuntimeFactory();
+        var settings = new AppSettings
+        {
+            ProviderSelectionMode = ProviderSelectionMode.Both
+        };
+        await using var services = CreateServices(factory, settings);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            services.ProviderRefreshLifecycle.RefreshAsync(CancellationToken.None));
+
+        Assert.Contains("No usage collector registered", exception.Message);
+        Assert.Contains("Claude", exception.Message);
+        Assert.Equal(1, factory.CreateCallCount);
+        Assert.Equal(0, factory.Collector.CollectCallCount);
     }
 
     [Fact]

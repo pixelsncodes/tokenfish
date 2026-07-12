@@ -15,7 +15,33 @@ public sealed class LocalAppSettingsStoreTests
 
         var settings = await store.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(new AppSettings(), settings);
+        AssertDefaultSettings(settings);
+    }
+
+    [Theory]
+    [InlineData(ProviderSelectionMode.ClaudeOnly)]
+    [InlineData(ProviderSelectionMode.CodexOnly)]
+    [InlineData(ProviderSelectionMode.Both)]
+    public async Task ValidPersistedProviderSelectionModeIsRespected(
+        ProviderSelectionMode providerSelectionMode)
+    {
+        using var directory = TemporaryDirectory.Create();
+        var store = CreateStore(directory);
+        await WriteSettingsJsonAsync(
+            store.SettingsFilePath,
+            $$"""
+            {
+              "SchemaVersion": 1,
+              "ProviderSelectionMode": "{{providerSelectionMode}}",
+              "ThemeMode": "Minimal",
+              "CodexRuntimeMode": "WslLoginShell",
+              "CodexWslDistributionName": null
+            }
+            """);
+
+        var settings = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(providerSelectionMode, settings.ProviderSelectionMode);
     }
 
     [Fact]
@@ -137,7 +163,7 @@ public sealed class LocalAppSettingsStoreTests
 
         var settings = await store.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(new AppSettings(), settings);
+        AssertDefaultSettings(settings);
     }
 
     [Fact]
@@ -181,7 +207,29 @@ public sealed class LocalAppSettingsStoreTests
 
         var settings = await store.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(new AppSettings(), settings);
+        AssertDefaultSettings(settings);
+    }
+
+    [Fact]
+    public async Task UnknownProviderSelectionModeRecoversToDefaults()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var store = CreateStore(directory);
+        await WriteSettingsJsonAsync(
+            store.SettingsFilePath,
+            """
+            {
+              "SchemaVersion": 1,
+              "ProviderSelectionMode": "FutureProvider",
+              "ThemeMode": "Minimal",
+              "CodexRuntimeMode": "WslLoginShell",
+              "CodexWslDistributionName": null
+            }
+            """);
+
+        var settings = await store.LoadAsync(CancellationToken.None);
+
+        AssertDefaultSettings(settings);
     }
 
     [Fact]
@@ -193,7 +241,7 @@ public sealed class LocalAppSettingsStoreTests
 
         var settings = await store.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(new AppSettings(), settings);
+        AssertDefaultSettings(settings);
     }
 
     [Fact]
@@ -206,7 +254,7 @@ public sealed class LocalAppSettingsStoreTests
 
         var settings = await store.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(new AppSettings(), settings);
+        AssertDefaultSettings(settings);
     }
 
     [Fact]
@@ -228,7 +276,7 @@ public sealed class LocalAppSettingsStoreTests
 
         var settings = await store.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(new AppSettings(), settings);
+        AssertDefaultSettings(settings);
     }
 
     [Fact]
@@ -306,6 +354,12 @@ public sealed class LocalAppSettingsStoreTests
         _ = CreateStore(directory);
 
         Assert.False(Directory.Exists(directory.Path));
+    }
+
+    private static void AssertDefaultSettings(AppSettings settings)
+    {
+        Assert.Equal(new AppSettings(), settings);
+        Assert.Equal(ProviderSelectionMode.CodexOnly, settings.ProviderSelectionMode);
     }
 
     private static LocalAppSettingsStore CreateStore(TemporaryDirectory directory) =>
