@@ -13,10 +13,17 @@ public sealed class TrayPopupDisplayStateAdapter
     ];
 
     private readonly TimeProvider _timeProvider;
+    private readonly CultureInfo _culture;
+    private readonly TimeZoneInfo _timeZone;
 
-    public TrayPopupDisplayStateAdapter(TimeProvider? timeProvider = null)
+    public TrayPopupDisplayStateAdapter(
+        TimeProvider? timeProvider = null,
+        CultureInfo? culture = null,
+        TimeZoneInfo? timeZone = null)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _culture = culture ?? CultureInfo.CurrentCulture;
+        _timeZone = timeZone ?? TimeZoneInfo.Local;
     }
 
     public TrayPopupDisplayState Create(
@@ -55,10 +62,15 @@ public sealed class TrayPopupDisplayStateAdapter
                 "Unavailable",
                 "Unavailable",
                 "Unavailable",
-                "Unavailable");
+                "Unavailable",
+                emptyUsageMessage: null,
+                footerText: string.Empty);
         }
 
         var snapshot = state.Snapshot;
+        var quotaWindows = CreateQuotaWindows(snapshot);
+        var activityRows = CreateActivityRows(snapshot);
+        var hasAvailableMetrics = quotaWindows.Count > 0 || activityRows.Count > 0;
         return new ProviderCardDisplayState(
             provider,
             GetProviderName(provider),
@@ -69,7 +81,269 @@ public sealed class TrayPopupDisplayStateAdapter
             FormatReset(snapshot.UsageWindowResetAt),
             FormatTokenCount(snapshot.SessionTokens),
             FormatTokenCount(snapshot.WeeklyTokens),
-            MapAuthority(snapshot));
+            MapAuthority(snapshot),
+            quotaWindows,
+            activityRows,
+            hasAvailableMetrics || snapshot.ConnectionState != ProviderConnectionState.Connected
+                ? null
+                : $"{GetProviderName(provider)} did not report usage data.",
+            CreateFooterText(provider, snapshot, state.EffectiveFreshness),
+            state.EffectiveFreshness == DataFreshness.Stale);
+    }
+
+    private IReadOnlyList<PopupQuotaWindowDisplayState> CreateQuotaWindows(
+        ProviderUsageSnapshot snapshot)
+    {
+        var windows = snapshot.QuotaWindows
+            .Where(window => window.IsAvailable)
+            .ToArray();
+        var displayWindows = new List<PopupQuotaWindowDisplayState>(windows.Length);
+
+        for (var index = 0; index < windows.Length; index++)
+        {
+            var window = windows[index];
+            var label = CreateQuotaLabel(window, index);
+            var percentageText = $"{FormatDecimal(window.UsedPercentage!.Value)}% used";
+            var relativeResetText = window.ResetAt.HasValue
+                ? FormatRelativeReset(window.ResetAt.Value)
+                : null;
+            var exactResetText = window.ResetAt.HasValue
+                ? FormatExactReset(window.ResetAt.Value)
+                : null;
+
+            displayWindows.Add(
+                new PopupQuotaWindowDisplayState(
+                    label,
+                    percentageText,
+                    window.UsedPercentage.Value,
+                    $"{label}: {percentageText}",
+                    relativeResetText,
+                    exactResetText));
+        }
+
+        return displayWindows;
+    }
+
+    private static string CreateQuotaLabel(NormalizedQuotaWindow window, int availableIndex)
+    {
+        if (string.IsNullOrWhiteSpace(window.DisplayLabel))
+        {
+            return availableIndex == 0 ? "Usage" : "Additional usage";
+        }
+
+        if (window.LabelOrigin == UsageMetricLabelOrigin.ProviderSupplied &&
+            ContainsUsageNoun(window.DisplayLabel))
+        {
+            return window.DisplayLabel;
+        }
+
+        return $"{window.DisplayLabel} usage";
+    }
+
+    private static bool ContainsUsageNoun(string label) =>
+        label.Contains("usage", StringComparison.OrdinalIgnoreCase) ||
+        label.Contains("limit", StringComparison.OrdinalIgnoreCase);
+
+    private string FormatRelativeReset(DateTimeOffset resetAt)
+    {
+        var remaining = resetAt.ToUniversalTime() - _timeProvider.GetUtcNow().ToUniversalTime();
+        if (remaining <= TimeSpan.Zero)
+        {
+            return "Reset due";
+        }
+
+        if (remaining < TimeSpan.FromMinutes(1))
+        {
+            return "Resets in less than a minute";
+        }
+
+        if (remaining < TimeSpan.FromHours(1))
+        {
+            return $"Resets in {(int)remaining.TotalMinutes}m";
+        }
+
+        if (remaining < TimeSpan.FromHours(48))
+        {
+            var hours = (int)remaining.TotalHours;
+            var minutes = remaining.Minutes;
+
+            return minutes > 0
+                ? $"Resets in {hours}h {minutes}m"
+                : $"Resets in {hours}h";
+        }
+
+        var days = (int)remaining.TotalDays;
+        var trailingHours = remaining.Hours;
+
+        return trailingHours > 0
+            ? $"Resets in {days}d {trailingHours}h"
+            : $"Resets in {days}d";
+    }
+
+    private string FormatExactReset(DateTimeOffset resetAt)
+    {
+        var localReset = TimeZoneInfo.ConvertTime(resetAt, _timeZone);
+
+        return localReset.ToString("dddd, MMMM d 'at' h:mm tt", _culture);
+    }
+
+    private IReadOnlyList<PopupActivityDisplayState> CreateActivityRows(
+        ProviderUsageSnapshot snapshot) =>
+        snapshot.ActivityMetrics
+            .Where(metric => metric.IsAvailable)
+            .Select(CreateActivityRow)
+            .ToArray();
+
+    private PopupActivityDisplayState CreateActivityRow(NormalizedActivityMetric metric)
+    {
+        var label = metric.Unit == UsageActivityUnit.Tokens ? "Tokens used" : "Activity";
+        var intervalText = CreateActivityIntervalText(metric);
+        var valueText = FormatCompactNumber(metric.Value!.Value);
+        var automationName = CreateActivityAutomationName(label, metric, intervalText);
+
+        return new PopupActivityDisplayState(
+            label,
+            intervalText,
+            valueText,
+            automationName);
+    }
+
+    private string? CreateActivityIntervalText(NormalizedActivityMetric metric)
+    {
+        if (!metric.IntervalStart.HasValue || !metric.IntervalEnd.HasValue)
+        {
+            return null;
+        }
+
+        var start = DateOnly.FromDateTime(metric.IntervalStart.Value.Date);
+        var inclusiveEnd = DateOnly.FromDateTime(metric.IntervalEnd.Value.Date).AddDays(-1);
+
+        return FormatDateRange(start, inclusiveEnd);
+    }
+
+    private string CreateActivityAutomationName(
+        string label,
+        NormalizedActivityMetric metric,
+        string? intervalText)
+    {
+        _ = intervalText;
+        var fullValue = metric.Value!.Value.ToString("N0", _culture);
+        var interval = CreateActivityAccessibilityInterval(metric);
+        var valueText = metric.Unit == UsageActivityUnit.Tokens
+            ? $"{fullValue} tokens used"
+            : $"{fullValue} {label.ToLowerInvariant()}";
+
+        return interval is null
+            ? valueText
+            : $"{valueText} from {interval}";
+    }
+
+    private string? CreateActivityAccessibilityInterval(NormalizedActivityMetric metric)
+    {
+        if (!metric.IntervalStart.HasValue || !metric.IntervalEnd.HasValue)
+        {
+            return null;
+        }
+
+        var start = DateOnly.FromDateTime(metric.IntervalStart.Value.Date);
+        var inclusiveEnd = DateOnly.FromDateTime(metric.IntervalEnd.Value.Date).AddDays(-1);
+
+        var includeYear = start.Year != inclusiveEnd.Year;
+
+        if (start == inclusiveEnd)
+        {
+            return FormatLongDate(start, includeYear);
+        }
+
+        return $"{FormatLongDate(start, includeYear)} through {FormatLongDate(inclusiveEnd, includeYear)}";
+    }
+
+    private string FormatDateRange(DateOnly start, DateOnly end)
+    {
+        if (start == end)
+        {
+            return FormatShortDate(start, includeYear: false);
+        }
+
+        if (start.Year != end.Year)
+        {
+            return $"{FormatShortDate(start, includeYear: true)}–{FormatShortDate(end, includeYear: true)}";
+        }
+
+        if (start.Month == end.Month)
+        {
+            return $"{start.ToDateTime(TimeOnly.MinValue).ToString("MMM", _culture)} {start.Day}–{end.Day}";
+        }
+
+        return $"{FormatShortDate(start, includeYear: false)}–{FormatShortDate(end, includeYear: false)}";
+    }
+
+    private string FormatShortDate(DateOnly date, bool includeYear) =>
+        date.ToDateTime(TimeOnly.MinValue).ToString(includeYear ? "MMM d, yyyy" : "MMM d", _culture);
+
+    private string FormatLongDate(DateOnly date, bool includeYear = false) =>
+        date.ToDateTime(TimeOnly.MinValue).ToString(includeYear ? "MMMM d, yyyy" : "MMMM d", _culture);
+
+    private static string FormatCompactNumber(long value)
+    {
+        if (value < 1_000)
+        {
+            return value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return value switch
+        {
+            < 1_000_000 => $"{FormatDecimal(value / 1_000m)}K",
+            < 1_000_000_000 => $"{FormatDecimal(value / 1_000_000m)}M",
+            _ => $"{FormatDecimal(value / 1_000_000_000m)}B"
+        };
+    }
+
+    private string CreateFooterText(
+        ProviderKind provider,
+        ProviderUsageSnapshot snapshot,
+        DataFreshness effectiveFreshness)
+    {
+        var capturedAt = snapshot.QuotaWindows
+            .Where(window => window.IsAvailable)
+            .Select(window => window.CapturedAt)
+            .Concat(snapshot.ActivityMetrics
+                .Where(metric => metric.IsAvailable)
+                .Select(metric => metric.CapturedAt))
+            .DefaultIfEmpty(snapshot.CapturedAt)
+            .Max();
+
+        var text = $"{FormatUpdatedText(capturedAt)} · Reported by {GetProviderName(provider)}";
+        return effectiveFreshness == DataFreshness.Stale
+            ? $"{text} · May be outdated"
+            : text;
+    }
+
+    private string FormatUpdatedText(DateTimeOffset capturedAt)
+    {
+        var age = _timeProvider.GetUtcNow().ToUniversalTime() - capturedAt.ToUniversalTime();
+        if (age < TimeSpan.Zero)
+        {
+            age = TimeSpan.Zero;
+        }
+
+        if (age < TimeSpan.FromMinutes(1))
+        {
+            return "Updated just now";
+        }
+
+        if (age < TimeSpan.FromHours(1))
+        {
+            return $"Updated {(int)age.TotalMinutes} min ago";
+        }
+
+        if (age < TimeSpan.FromDays(1))
+        {
+            return $"Updated {(int)age.TotalHours}h ago";
+        }
+
+        var localCapturedAt = TimeZoneInfo.ConvertTime(capturedAt, _timeZone);
+        return $"Updated {localCapturedAt.ToString("g", _culture)}";
     }
 
     private string FormatReset(DateTimeOffset? resetAt)
@@ -99,6 +373,9 @@ public sealed class TrayPopupDisplayStateAdapter
         metric.IsAvailable
             ? string.Create(CultureInfo.InvariantCulture, $"{metric.PercentageConsumed:0.#}%")
             : "Unavailable";
+
+    private static string FormatDecimal(decimal value) =>
+        value.ToString("0.#", CultureInfo.InvariantCulture);
 
     private static string FormatTokenCount(TokenCountMetric metric) =>
         metric.IsAvailable
