@@ -4,6 +4,8 @@ namespace TokenFish.Providers.Codex;
 
 public sealed class CodexAppServerLaunchCommand
 {
+    private const string WslLoginShellCommand = "exec codex app-server --stdio";
+
     private CodexAppServerLaunchCommand(string executable, IReadOnlyList<string> arguments)
     {
         Executable = executable;
@@ -42,6 +44,29 @@ public sealed class CodexAppServerLaunchCommand
                     "codex",
                     "app-server",
                     "--stdio"
+                ]));
+    }
+
+    public static CodexAppServerLaunchCommand CreateWslLoginShell(
+        string? distributionName = null)
+    {
+        if (distributionName is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(distributionName);
+        }
+
+        return new CodexAppServerLaunchCommand(
+            "wsl.exe",
+            distributionName is null
+                ? CreateArguments(["--exec", "bash", "-lc", WslLoginShellCommand])
+                : CreateArguments(
+                [
+                    "--distribution",
+                    distributionName,
+                    "--exec",
+                    "bash",
+                    "-lc",
+                    WslLoginShellCommand
                 ]));
     }
 
