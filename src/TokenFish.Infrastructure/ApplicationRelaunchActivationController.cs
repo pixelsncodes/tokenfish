@@ -51,11 +51,16 @@ public sealed class ApplicationRelaunchActivationController : IDisposable
 
     public void BeginShutdown()
     {
+        IDisposable? subscription;
         lock (_sync)
         {
             _shutdownStarted = true;
             _activationQueued = false;
+            subscription = _subscription;
+            _subscription = null;
         }
+
+        subscription?.Dispose();
     }
 
     public void Dispose()

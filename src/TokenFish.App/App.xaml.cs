@@ -16,6 +16,7 @@ public partial class App : Application
     private NotificationAreaController? _notificationAreaController;
     private TrayPopupController? _popupController;
     private ApplicationRelaunchActivationController? _relaunchActivationController;
+    private ApplicationShutdownCoordinator? _shutdownCoordinator;
     private readonly TrayPopupDisplayStateAdapter _displayStateAdapter = new();
     private readonly IProviderRuntimeSnapshotStore _emptySnapshotStore =
         new InMemoryProviderRuntimeSnapshotStore(TimeProvider.System, TimeSpan.FromMinutes(10));
@@ -67,6 +68,10 @@ public partial class App : Application
             _runtimeHost.ReportShellFault);
         _relaunchActivationController.Initialize();
         _runtimeHost.StatusChanged += OnRuntimeStatusChanged;
+        _shutdownCoordinator = new ApplicationShutdownCoordinator(
+            CleanupForExitAsync,
+            CompleteApplicationShutdown,
+            _runtimeHost.ReportShellFault);
 
         _ = StartRuntimeAsync();
     }
@@ -116,9 +121,19 @@ public partial class App : Application
 
     private async Task ExitAsync()
     {
+        _shutdownCoordinator ??= new ApplicationShutdownCoordinator(
+            CleanupForExitAsync,
+            CompleteApplicationShutdown,
+            _runtimeHost.ReportShellFault);
+
+        await _shutdownCoordinator.ShutdownAsync(CancellationToken.None);
+    }
+
+    private async Task CleanupForExitAsync(CancellationToken cancellationToken)
+    {
         if (_window is null)
         {
-            await _runtimeHost.StopAsync(CancellationToken.None);
+            await _runtimeHost.StopAsync(cancellationToken);
             _relaunchActivationController?.Dispose();
             _popupController?.Dispose();
             _notificationAreaController?.Dispose();
@@ -129,13 +144,16 @@ public partial class App : Application
         _relaunchActivationController?.BeginShutdown();
         _window.AppWindow.Hide();
 
-        await _runtimeHost.StopAsync(CancellationToken.None);
+        await _runtimeHost.StopAsync(cancellationToken);
         _relaunchActivationController?.Dispose();
         _popupController?.Dispose();
         _notificationAreaController?.Dispose();
         _popupWindow?.AllowClose();
+        _window.Closed -= OnWindowClosed;
         _window.Close();
     }
+
+    private void CompleteApplicationShutdown() => Exit();
 
     private static string GetClientVersion()
     {

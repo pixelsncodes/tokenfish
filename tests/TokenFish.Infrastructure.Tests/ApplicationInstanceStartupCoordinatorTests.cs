@@ -61,6 +61,35 @@ public sealed class ApplicationInstanceStartupCoordinatorTests
     }
 
     [Fact]
+    public async Task StartupRunnerReturnsAfterPrimaryApplicationShutdown()
+    {
+        var registration = new RecordingInstanceRegistration { IsCurrent = true };
+        var registrar = new RecordingInstanceRegistrar(registration);
+        var coordinator = new ApplicationInstanceStartupCoordinator(registrar);
+        var runner = new ApplicationInstanceStartupRunner(coordinator);
+        var primaryStartupEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var applicationShutdown = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var startup = runner.RunAsync(
+            async () =>
+            {
+                primaryStartupEntered.SetResult();
+                await applicationShutdown.Task;
+            },
+            CancellationToken.None);
+        await primaryStartupEntered.Task;
+
+        Assert.False(startup.IsCompleted);
+
+        applicationShutdown.SetResult();
+        var result = await startup;
+
+        Assert.Equal(ApplicationInstanceStartupKind.Primary, result.Kind);
+    }
+
+    [Fact]
     public async Task RedirectionFailureProducesClosedSanitizedStartupResult()
     {
         var registration = new RecordingInstanceRegistration

@@ -84,6 +84,7 @@ public sealed class ApplicationRelaunchActivationControllerTests
         source.RaiseActivated();
         queue.Flush();
 
+        Assert.Equal(1, source.UnsubscribeCallCount);
         Assert.Equal(0, queue.EnqueueCallCount);
         Assert.Equal(0, showCallCount);
     }
