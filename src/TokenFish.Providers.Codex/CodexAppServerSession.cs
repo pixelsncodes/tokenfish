@@ -2,7 +2,7 @@ using TokenFish.Core.Models;
 
 namespace TokenFish.Providers.Codex;
 
-public sealed class CodexAppServerSession : IAsyncDisposable
+public sealed class CodexAppServerSession : ICodexAppServerSession
 {
     private static readonly TimeSpan DefaultShutdownTimeout = TimeSpan.FromSeconds(2);
 
