@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media.Imaging;
 using TokenFish.Infrastructure;
 
 namespace TokenFish.App;
@@ -14,7 +15,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
 
-        AppWindow.SetIcon("Assets/AppIcon.ico");
+        InitializeIconSurfaces();
         AppWindow.Closing += OnAppWindowClosing;
         Activated += OnActivated;
         Content.KeyDown += OnKeyDown;
@@ -27,6 +28,66 @@ public sealed partial class MainWindow : Window
     public event Action? PopupCloseRequested;
 
     public void AllowClose() => _allowClose = true;
+
+    private void InitializeIconSurfaces()
+    {
+        TrySetWindowIcon();
+        TrySetHeaderIcon();
+    }
+
+    private void TrySetWindowIcon()
+    {
+        if (!ApplicationIconPath.TryResolveExistingWindowIcon(
+            AppContext.BaseDirectory,
+            out var iconPath))
+        {
+            return;
+        }
+
+        try
+        {
+            AppWindow.SetIcon(iconPath);
+        }
+        catch
+        {
+        }
+    }
+
+    private void TrySetHeaderIcon()
+    {
+        HeaderIcon.ImageOpened += OnHeaderIconImageOpened;
+        HeaderIcon.ImageFailed += OnHeaderIconImageFailed;
+
+        if (!ApplicationIconPath.TryResolveExistingHeaderIcon(
+            AppContext.BaseDirectory,
+            out var iconPath))
+        {
+            HeaderIcon.Source = null;
+            HeaderIcon.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        try
+        {
+            HeaderIcon.Source = new BitmapImage(new Uri(iconPath));
+        }
+        catch
+        {
+            HeaderIcon.Source = null;
+            HeaderIcon.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void OnHeaderIconImageOpened(object sender, RoutedEventArgs args)
+    {
+        HeaderIcon.Visibility = Visibility.Visible;
+    }
+
+    private void OnHeaderIconImageFailed(object sender, ExceptionRoutedEventArgs args)
+    {
+        HeaderIcon.Source = null;
+        HeaderIcon.Visibility = Visibility.Collapsed;
+    }
 
     public void UpdateState(TrayPopupDisplayState state)
     {

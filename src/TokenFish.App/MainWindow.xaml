@@ -25,9 +25,10 @@
             </Grid.ColumnDefinitions>
 
             <Image
+                x:Name="HeaderIcon"
                 Width="24"
                 Height="24"
-                Source="Assets/AppIcon.ico" />
+                Visibility="Collapsed" />
 
             <StackPanel Grid.Column="1" Spacing="1">
                 <TextBlock
