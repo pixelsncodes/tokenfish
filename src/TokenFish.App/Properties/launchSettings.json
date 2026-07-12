@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "TokenFish.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "TokenFish.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
