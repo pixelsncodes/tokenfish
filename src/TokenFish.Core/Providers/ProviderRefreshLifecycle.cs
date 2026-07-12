@@ -2,7 +2,7 @@ using TokenFish.Core.Models;
 
 namespace TokenFish.Core.Providers;
 
-public sealed class ProviderRefreshLifecycle : IAsyncDisposable
+public sealed class ProviderRefreshLifecycle : IProviderRefreshLifecycle
 {
     private static readonly Func<TimeSpan, TimeProvider, CancellationToken, Task> DefaultDelayAsync =
         static (delay, timeProvider, cancellationToken) =>

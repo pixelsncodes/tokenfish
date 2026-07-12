@@ -4,7 +4,7 @@ using TokenFish.Providers.Codex;
 
 namespace TokenFish.Infrastructure;
 
-public sealed class TokenFishApplicationServices : IAsyncDisposable
+public sealed class TokenFishApplicationServices : IApplicationRuntimeServices
 {
     private static readonly TimeSpan DefaultProviderRefreshInterval = TimeSpan.FromMinutes(1);
 
@@ -29,6 +29,9 @@ public sealed class TokenFishApplicationServices : IAsyncDisposable
     public IProviderUsageCollector? CodexUsageCollector { get; }
 
     public ProviderRefreshLifecycle ProviderRefreshLifecycle => _providerRefreshLifecycle;
+
+    IProviderRefreshLifecycle IApplicationRuntimeServices.ProviderRefreshLifecycle =>
+        _providerRefreshLifecycle;
 
     public IProviderRuntimeSnapshotStore ProviderRuntimeSnapshotStore =>
         _providerRuntimeSnapshotStore;
