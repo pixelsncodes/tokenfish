@@ -6,7 +6,7 @@ using TokenFish.Providers.Codex.Usage;
 
 namespace TokenFish.Providers.Codex;
 
-public sealed class CodexAppServerProtocolClient
+public sealed class CodexAppServerProtocolClient : ICodexAppServerProtocolClient
 {
     private const int MaximumResponseLineLength = 1_048_576;
 
