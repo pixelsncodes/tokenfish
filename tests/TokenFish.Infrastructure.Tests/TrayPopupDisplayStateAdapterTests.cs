@@ -55,106 +55,33 @@ public sealed class TrayPopupDisplayStateAdapterTests
     }
 
     [Fact]
-    public void NoSnapshotMapsToUnavailableFieldsRatherThanZeroValues()
+    public void NoSnapshotMapsToWaitingConnectionWithoutUsageRows()
     {
         var state = CreateState(
             new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
             []);
         var provider = Assert.Single(state.Providers);
 
-        Assert.Null(provider.UsagePercentage);
-        Assert.Equal("Unavailable", provider.UsageWindow);
-        Assert.Equal("Unavailable", provider.SessionTokens);
-        Assert.Equal("Unavailable", provider.WeeklyTokens);
-        Assert.Equal("Unavailable", provider.Reset);
+        Assert.Equal("Waiting for first refresh", provider.ConnectionState);
+        Assert.Empty(provider.QuotaWindows);
+        Assert.Empty(provider.ActivityRows);
+        Assert.Null(provider.EmptyUsageMessage);
+        Assert.Equal(string.Empty, provider.FooterText);
     }
 
     [Fact]
-    public void AvailablePercentageIsPreserved()
+    public void PresentationModelDoesNotExposeLegacyTechnicalRows()
     {
-        var provider = SingleProvider(CreateSnapshot(ProviderKind.Codex, percentage: 42.5m));
+        var propertyNames = typeof(ProviderCardDisplayState)
+            .GetProperties()
+            .Select(property => property.Name);
 
-        Assert.Equal(42.5m, provider.UsagePercentage);
-        Assert.Equal("42.5%", provider.UsageWindow);
-    }
-
-    [Fact]
-    public void UnavailablePercentageDoesNotCreateFabricatedProgressValue()
-    {
-        var provider = SingleProvider(CreateSnapshot(ProviderKind.Codex, percentage: null));
-
-        Assert.Null(provider.UsagePercentage);
-        Assert.Equal("Unavailable", provider.UsageWindow);
-    }
-
-    [Fact]
-    public void SessionAndWeeklyTokenAvailabilityAreHandledIndependently()
-    {
-        var provider = SingleProvider(CreateSnapshot(
-            ProviderKind.Codex,
-            sessionTokens: null,
-            weeklyTokens: 1_234));
-
-        Assert.Equal("Unavailable", provider.SessionTokens);
-        Assert.Equal("1,234", provider.WeeklyTokens);
-    }
-
-    [Fact]
-    public void ResetCountdownUsesInjectedTime()
-    {
-        var timeProvider = new ManualTimeProvider(
-            new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero));
-        var provider = SingleProvider(
-            CreateSnapshot(
-                ProviderKind.Codex,
-                resetAt: new DateTimeOffset(2026, 7, 12, 9, 30, 0, TimeSpan.Zero)),
-            timeProvider);
-
-        Assert.Equal("1h 30m", provider.Reset);
-    }
-
-    [Fact]
-    public void PastResetTimestampMapsToDueState()
-    {
-        var timeProvider = new ManualTimeProvider(
-            new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero));
-        var provider = SingleProvider(
-            CreateSnapshot(
-                ProviderKind.Codex,
-                resetAt: new DateTimeOffset(2026, 7, 12, 7, 59, 0, TimeSpan.Zero)),
-            timeProvider);
-
-        Assert.Equal("Reset due", provider.Reset);
-    }
-
-    [Fact]
-    public void FreshnessComesFromExistingStoreReadResult()
-    {
-        var timeProvider = new ManualTimeProvider();
-        var store = new InMemoryProviderRuntimeSnapshotStore(timeProvider, TimeSpan.FromMinutes(5));
-        store.Store([CreateSnapshot(ProviderKind.Codex)]);
-        timeProvider.Advance(TimeSpan.FromMinutes(6));
-
-        var state = new TrayPopupDisplayStateAdapter(timeProvider).Create(
-            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
-            ApplicationRuntimeStatus.Running,
-            store);
-
-        Assert.Equal("Stale", Assert.Single(state.Providers).Freshness);
-    }
-
-    [Fact]
-    public void DataAuthorityLabelsMapCorrectly()
-    {
-        Assert.Equal("Provider-reported", SingleProvider(CreateSnapshot(
-            ProviderKind.Codex,
-            authority: DataAuthority.LocalProviderReported)).DataAuthority);
-        Assert.Equal("Locally calculated", SingleProvider(CreateSnapshot(
-            ProviderKind.Codex,
-            authority: DataAuthority.TokenFishDerived)).DataAuthority);
-        Assert.Equal("Estimated", SingleProvider(CreateSnapshot(
-            ProviderKind.Codex,
-            authority: DataAuthority.UserControlled)).DataAuthority);
+        Assert.DoesNotContain("UsageWindow", propertyNames);
+        Assert.DoesNotContain("Reset", propertyNames);
+        Assert.DoesNotContain("SessionTokens", propertyNames);
+        Assert.DoesNotContain("WeeklyTokens", propertyNames);
+        Assert.DoesNotContain("Freshness", propertyNames);
+        Assert.DoesNotContain("DataAuthority", propertyNames);
     }
 
     [Fact]
@@ -168,6 +95,17 @@ public sealed class TrayPopupDisplayStateAdapterTests
         Assert.Equal(PopupApplicationDisplayState.RefreshIssue, state.ApplicationState);
         Assert.Equal("TokenFish could not refresh usage", state.StatusText);
         Assert.DoesNotContain("exception", state.StatusText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DisconnectedProviderWithoutMetricsDoesNotShowUsageEmptyState()
+    {
+        var provider = SingleProvider(CreateSnapshot(
+            ProviderKind.Codex,
+            connectionState: ProviderConnectionState.Disconnected));
+
+        Assert.Equal("Disconnected", provider.ConnectionState);
+        Assert.Null(provider.EmptyUsageMessage);
     }
 
     [Fact]
@@ -393,6 +331,20 @@ public sealed class TrayPopupDisplayStateAdapterTests
     }
 
     [Fact]
+    public void ActivityPresentationDoesNotImplyWeeklyQuota()
+    {
+        var provider = SingleProvider(CreateSnapshot(
+            ProviderKind.Codex,
+            activityMetrics: [ActivityMetric(105_198_188)]));
+
+        var activity = Assert.Single(provider.ActivityRows);
+        Assert.Equal("Tokens used", activity.Label);
+        Assert.Equal("Jul 6–12", activity.IntervalText);
+        Assert.DoesNotContain("Weekly", activity.Label, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("quota", activity.AutomationName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void MissingActivityOmitsActivityRows()
     {
         var provider = SingleProvider(CreateSnapshot(
@@ -482,6 +434,18 @@ public sealed class TrayPopupDisplayStateAdapterTests
         var provider = Assert.Single(state.Providers);
         Assert.Equal("Updated 6 min ago · Reported by Codex · May be outdated", provider.FooterText);
         Assert.True(provider.IsStale);
+    }
+
+    [Fact]
+    public void FooterDoesNotExposeInternalProvenanceEnums()
+    {
+        var provider = SingleProvider(CreateSnapshot(
+            ProviderKind.Codex,
+            quotaWindows: [QuotaWindow("codex:default:primary", "Weekly", 14m)]));
+
+        Assert.DoesNotContain(nameof(DataAuthority.LocalProviderReported), provider.FooterText);
+        Assert.DoesNotContain(nameof(DataFreshness.Live), provider.FooterText);
+        Assert.DoesNotContain("account/rateLimits/read", provider.FooterText);
     }
 
     [Fact]

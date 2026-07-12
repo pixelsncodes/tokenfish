@@ -56,13 +56,6 @@ public sealed class TrayPopupDisplayStateAdapter
                 provider,
                 GetProviderName(provider),
                 "Waiting for first refresh",
-                "Unavailable",
-                null,
-                "Unavailable",
-                "Unavailable",
-                "Unavailable",
-                "Unavailable",
-                "Unavailable",
                 emptyUsageMessage: null,
                 footerText: string.Empty);
         }
@@ -75,13 +68,6 @@ public sealed class TrayPopupDisplayStateAdapter
             provider,
             GetProviderName(provider),
             MapConnectionState(snapshot.ConnectionState),
-            MapFreshness(state.EffectiveFreshness),
-            snapshot.UsageWindow.PercentageConsumed,
-            FormatPercentage(snapshot.UsageWindow),
-            FormatReset(snapshot.UsageWindowResetAt),
-            FormatTokenCount(snapshot.SessionTokens),
-            FormatTokenCount(snapshot.WeeklyTokens),
-            MapAuthority(snapshot),
             quotaWindows,
             activityRows,
             hasAvailableMetrics || snapshot.ConnectionState != ProviderConnectionState.Connected
@@ -346,61 +332,8 @@ public sealed class TrayPopupDisplayStateAdapter
         return $"Updated {localCapturedAt.ToString("g", _culture)}";
     }
 
-    private string FormatReset(DateTimeOffset? resetAt)
-    {
-        if (!resetAt.HasValue)
-        {
-            return "Unavailable";
-        }
-
-        var remaining = resetAt.Value.ToUniversalTime() - _timeProvider.GetUtcNow().ToUniversalTime();
-        if (remaining <= TimeSpan.Zero)
-        {
-            return "Reset due";
-        }
-
-        if (remaining.TotalHours >= 1)
-        {
-            return string.Create(
-                CultureInfo.InvariantCulture,
-                $"{(int)remaining.TotalHours}h {remaining.Minutes}m");
-        }
-
-        return string.Create(CultureInfo.InvariantCulture, $"{Math.Max(1, remaining.Minutes)}m");
-    }
-
-    private static string FormatPercentage(PercentageUsageMetric metric) =>
-        metric.IsAvailable
-            ? string.Create(CultureInfo.InvariantCulture, $"{metric.PercentageConsumed:0.#}%")
-            : "Unavailable";
-
     private static string FormatDecimal(decimal value) =>
         value.ToString("0.#", CultureInfo.InvariantCulture);
-
-    private static string FormatTokenCount(TokenCountMetric metric) =>
-        metric.IsAvailable
-            ? metric.TokenCount!.Value.ToString("N0", CultureInfo.InvariantCulture)
-            : "Unavailable";
-
-    private static string MapAuthority(ProviderUsageSnapshot snapshot)
-    {
-        if (snapshot.UsageWindow.IsAvailable)
-        {
-            return MapAuthority(snapshot.UsageWindow.Authority);
-        }
-
-        if (snapshot.SessionTokens.IsAvailable)
-        {
-            return MapAuthority(snapshot.SessionTokens.Authority);
-        }
-
-        if (snapshot.WeeklyTokens.IsAvailable)
-        {
-            return MapAuthority(snapshot.WeeklyTokens.Authority);
-        }
-
-        return "Unavailable";
-    }
 
     private static PopupApplicationDisplayState MapApplicationState(
         ApplicationRuntimeStatus status) =>
@@ -459,25 +392,6 @@ public sealed class TrayPopupDisplayStateAdapter
             ProviderConnectionState.Connected => "Connected",
             ProviderConnectionState.Degraded => "Degraded",
             _ => "Unknown"
-        };
-
-    private static string MapFreshness(DataFreshness freshness) =>
-        freshness switch
-        {
-            DataFreshness.Unknown => "Unavailable",
-            DataFreshness.Live => "Live",
-            DataFreshness.Cached => "Cached",
-            DataFreshness.Stale => "Stale",
-            _ => "Unavailable"
-        };
-
-    private static string MapAuthority(DataAuthority authority) =>
-        authority switch
-        {
-            DataAuthority.LocalProviderReported => "Provider-reported",
-            DataAuthority.TokenFishDerived => "Locally calculated",
-            DataAuthority.UserControlled => "Estimated",
-            _ => "Unavailable"
         };
 
     private static ProviderKind[] GetEnabledProviders(ProviderSelectionMode providerSelectionMode) =>

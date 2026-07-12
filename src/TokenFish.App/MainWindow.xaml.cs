@@ -70,6 +70,27 @@ public sealed partial class MainWindow : Window
             stack.Children.Add(CreateQuotaWindowSection(quotaWindow));
         }
 
+        if (provider.ActivityRows.Count > 0)
+        {
+            stack.Children.Add(CreateActivitySection(provider.ActivityRows));
+        }
+
+        if (provider.EmptyUsageMessage is not null)
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = provider.EmptyUsageMessage,
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+                    "TextFillColorSecondaryBrush"],
+                TextWrapping = TextWrapping.WrapWholeWords
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(provider.FooterText))
+        {
+            stack.Children.Add(CreateFooter(provider.FooterText));
+        }
+
         return card;
     }
 
@@ -155,30 +176,63 @@ public sealed partial class MainWindow : Window
         return stack;
     }
 
-    private static UIElement CreateRow(string label, string value)
+    private static UIElement CreateActivitySection(IReadOnlyList<PopupActivityDisplayState> activityRows)
+    {
+        var stack = new StackPanel { Spacing = 6 };
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Additional activity",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Margin = new Thickness(0, 4, 0, 0)
+        });
+
+        foreach (var activity in activityRows)
+        {
+            stack.Children.Add(CreateActivityRow(activity));
+        }
+
+        return stack;
+    }
+
+    private static UIElement CreateActivityRow(PopupActivityDisplayState activity)
     {
         var grid = new Grid { ColumnSpacing = 12 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        AutomationProperties.SetName(grid, activity.AutomationName);
 
+        var labelText = activity.IntervalText is null
+            ? activity.Label
+            : $"{activity.Label} · {activity.IntervalText}";
         grid.Children.Add(new TextBlock
         {
-            Text = label,
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
-                "TextFillColorSecondaryBrush"]
+            Text = labelText,
+            TextWrapping = TextWrapping.WrapWholeWords
         });
 
         var valueBlock = new TextBlock
         {
-            Text = value,
+            Text = activity.ValueText,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             TextAlignment = TextAlignment.Right,
-            TextWrapping = TextWrapping.WrapWholeWords
+            TextWrapping = TextWrapping.NoWrap
         };
         Grid.SetColumn(valueBlock, 1);
         grid.Children.Add(valueBlock);
 
         return grid;
     }
+
+    private static UIElement CreateFooter(string footerText) =>
+        new TextBlock
+        {
+            Text = footerText,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+                "TextFillColorSecondaryBrush"],
+            FontSize = 12,
+            Margin = new Thickness(0, 4, 0, 0),
+            TextWrapping = TextWrapping.WrapWholeWords
+        };
 
     private void OnActivated(object sender, WindowActivatedEventArgs args)
     {
