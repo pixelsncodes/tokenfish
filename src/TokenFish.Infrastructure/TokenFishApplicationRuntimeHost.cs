@@ -3,7 +3,7 @@ using TokenFish.Core.Settings;
 
 namespace TokenFish.Infrastructure;
 
-public sealed class TokenFishApplicationRuntimeHost : IAsyncDisposable
+public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, IAsyncDisposable
 {
     private readonly IAppSettingsStore _settingsStore;
     private readonly string _clientVersion;
@@ -150,6 +150,17 @@ public sealed class TokenFishApplicationRuntimeHost : IAsyncDisposable
             return cancellationToken.CanBeCanceled
                 ? _shutdownTask.WaitAsync(cancellationToken)
                 : _shutdownTask;
+        }
+    }
+
+    public void ReportShellFault()
+    {
+        lock (_sync)
+        {
+            if (!_shutdownStarted)
+            {
+                SetStatusUnderLock(ApplicationRuntimeStatus.ShellFaulted);
+            }
         }
     }
 

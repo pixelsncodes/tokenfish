@@ -27,4 +27,7 @@ public sealed record ApplicationRuntimeStatus(
 
     public static ApplicationRuntimeStatus ShutdownFaulted { get; } =
         new(ApplicationRuntimeState.Faulted, ApplicationRuntimeIssue.ShutdownFailed);
+
+    public static ApplicationRuntimeStatus ShellFaulted { get; } =
+        new(ApplicationRuntimeState.Faulted, ApplicationRuntimeIssue.ShellFailed);
 }
