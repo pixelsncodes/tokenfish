@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TokenFish.Core.Tests", "tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TokenFish.Providers.Codex.Tests", "tests\TokenFish.Providers.Codex.Tests\TokenFish.Providers.Codex.Tests.csproj", "{CD02BB7B-B77D-4822-A8EF-B2CEB98B42E4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TokenFish.Infrastructure.Tests", "tests\TokenFish.Infrastructure.Tests\TokenFish.Infrastructure.Tests.csproj", "{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -115,6 +117,18 @@ Global
 		{CD02BB7B-B77D-4822-A8EF-B2CEB98B42E4}.Release|x64.Build.0 = Release|Any CPU
 		{CD02BB7B-B77D-4822-A8EF-B2CEB98B42E4}.Release|x86.ActiveCfg = Release|Any CPU
 		{CD02BB7B-B77D-4822-A8EF-B2CEB98B42E4}.Release|x86.Build.0 = Release|Any CPU
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Debug|x64.Build.0 = Debug|Any CPU
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Debug|x86.Build.0 = Debug|Any CPU
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Release|x64.ActiveCfg = Release|Any CPU
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Release|x64.Build.0 = Release|Any CPU
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Release|x86.ActiveCfg = Release|Any CPU
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -127,5 +141,6 @@ Global
 		{16C4BD3A-B70A-4786-8B11-EB4B1525AE9F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{B1F0EA8C-DDEC-450E-9611-0611FD68F36B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{CD02BB7B-B77D-4822-A8EF-B2CEB98B42E4} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal
