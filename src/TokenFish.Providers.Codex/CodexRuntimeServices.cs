@@ -5,12 +5,16 @@ namespace TokenFish.Providers.Codex;
 public sealed class CodexRuntimeServices : IAsyncDisposable
 {
     private readonly CodexSessionUsageCollector _codexUsageCollector;
+    private readonly IProviderUsageCollector _safeCodexUsageCollector;
 
     private bool _disposed;
 
-    private CodexRuntimeServices(CodexSessionUsageCollector codexUsageCollector)
+    private CodexRuntimeServices(
+        CodexSessionUsageCollector codexUsageCollector,
+        IProviderUsageCollector safeCodexUsageCollector)
     {
         _codexUsageCollector = codexUsageCollector;
+        _safeCodexUsageCollector = safeCodexUsageCollector;
     }
 
     public IProviderUsageCollector CodexUsageCollector
@@ -19,7 +23,7 @@ public sealed class CodexRuntimeServices : IAsyncDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            return _codexUsageCollector;
+            return _safeCodexUsageCollector;
         }
     }
 
@@ -45,11 +49,13 @@ public sealed class CodexRuntimeServices : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(clientVersion);
         ArgumentNullException.ThrowIfNull(sessionFactory);
 
-        return new CodexRuntimeServices(
-            new CodexSessionUsageCollector(
-                sessionFactory,
-                launchCommand,
-                clientVersion));
+        var runtimeCollector = new CodexSessionUsageCollector(
+            sessionFactory,
+            launchCommand,
+            clientVersion);
+        var safeCollector = new CodexRuntimeFailureMappingCollector(runtimeCollector);
+
+        return new CodexRuntimeServices(runtimeCollector, safeCollector);
     }
 
     internal static CodexRuntimeServices Create(
@@ -60,10 +66,18 @@ public sealed class CodexRuntimeServices : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(processFactory);
 
-        return Create(
+        ArgumentNullException.ThrowIfNull(launchCommand);
+        ArgumentException.ThrowIfNullOrWhiteSpace(clientVersion);
+
+        var runtimeCollector = new CodexSessionUsageCollector(
+            new CodexAppServerSessionFactory(processFactory, timeProvider),
             launchCommand,
-            clientVersion,
-            new CodexAppServerSessionFactory(processFactory, timeProvider));
+            clientVersion);
+        var safeCollector = new CodexRuntimeFailureMappingCollector(
+            runtimeCollector,
+            timeProvider);
+
+        return new CodexRuntimeServices(runtimeCollector, safeCollector);
     }
 
     public async ValueTask DisposeAsync()

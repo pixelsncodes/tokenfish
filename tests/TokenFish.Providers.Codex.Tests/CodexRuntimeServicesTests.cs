@@ -52,6 +52,34 @@ public sealed class CodexRuntimeServicesTests
     }
 
     [Fact]
+    public async Task CollectorIsSafeApplicationFacingCollector()
+    {
+        await using var services = CreateServices(
+            new FakeCodexAppServerProcessFactory(CreateProcess()));
+
+        Assert.IsType<CodexRuntimeFailureMappingCollector>(services.CodexUsageCollector);
+    }
+
+    [Fact]
+    public async Task ExpectedStartupFailureReturnsSafeSnapshot()
+    {
+        var processFactory = new FakeCodexAppServerProcessFactory(CreateProcess())
+        {
+            StartException = new InvalidOperationException("sanitized startup failure")
+        };
+        await using var services = CreateServices(processFactory);
+
+        var snapshot = await services.CodexUsageCollector.CollectAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderKind.Codex, snapshot.Provider);
+        Assert.Equal(ProviderConnectionState.Disconnected, snapshot.ConnectionState);
+        Assert.False(snapshot.UsageWindow.IsAvailable);
+        Assert.False(snapshot.WeeklyTokens.IsAvailable);
+        Assert.False(snapshot.SessionTokens.IsAvailable);
+        Assert.Equal(CapturedAt, snapshot.CapturedAt);
+    }
+
+    [Fact]
     public async Task ExplicitLaunchCommandReachesSessionAndProcessConstructionPath()
     {
         var launchCommand = CodexAppServerLaunchCommand.CreateWsl("Ubuntu-24.04");
@@ -74,6 +102,18 @@ public sealed class CodexRuntimeServicesTests
         await services.DisposeAsync();
 
         Assert.Equal(0, processFactory.StartCallCount);
+    }
+
+    [Fact]
+    public async Task CollectionAfterDisposalIsRejected()
+    {
+        await using var services = CreateServices(
+            new FakeCodexAppServerProcessFactory(CreateProcess()));
+        var collector = services.CodexUsageCollector;
+        await services.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            collector.CollectAsync(CancellationToken.None));
     }
 
     [Fact]
@@ -123,6 +163,8 @@ public sealed class CodexRuntimeServicesTests
     private sealed class FakeCodexAppServerProcessFactory(
         FakeCodexAppServerProcess process) : ICodexAppServerProcessFactory
     {
+        public Exception? StartException { get; init; }
+
         public int StartCallCount { get; private set; }
 
         public CodexAppServerLaunchCommand? LaunchCommand { get; private set; }
@@ -131,6 +173,11 @@ public sealed class CodexRuntimeServicesTests
         {
             StartCallCount++;
             LaunchCommand = launchCommand;
+
+            if (StartException is not null)
+            {
+                throw StartException;
+            }
 
             return process;
         }
