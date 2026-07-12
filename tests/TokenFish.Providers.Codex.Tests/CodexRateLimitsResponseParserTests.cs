@@ -13,6 +13,8 @@ public sealed class CodexRateLimitsResponseParserTests
     {
         var snapshot = _parser.Parse(CreateSuccessResponse(primaryUsedPercent: 42), RequestId);
 
+        Assert.Equal("codex", snapshot.LimitId);
+        Assert.Null(snapshot.LimitName);
         Assert.True(snapshot.Primary.IsAvailable);
         Assert.Equal(42, snapshot.Primary.UsedPercent);
         Assert.Equal(300, snapshot.Primary.WindowDurationMins);
@@ -27,6 +29,21 @@ public sealed class CodexRateLimitsResponseParserTests
 
         Assert.True(snapshot.Secondary.IsAvailable);
         Assert.Equal(84, snapshot.Secondary.UsedPercent);
+        Assert.Equal(10_080, snapshot.Secondary.WindowDurationMins);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1_785_604_800), snapshot.Secondary.ResetsAt);
+    }
+
+    [Fact]
+    public void ParsesPrimaryAndSecondaryWindowsTogetherWithoutMerging()
+    {
+        var snapshot = _parser.Parse(
+            CreateSuccessResponse(primaryUsedPercent: 14, secondaryUsedPercent: 65),
+            RequestId);
+
+        Assert.Equal(14, snapshot.Primary.UsedPercent);
+        Assert.Equal(300, snapshot.Primary.WindowDurationMins);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1_785_000_000), snapshot.Primary.ResetsAt);
+        Assert.Equal(65, snapshot.Secondary.UsedPercent);
         Assert.Equal(10_080, snapshot.Secondary.WindowDurationMins);
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1_785_604_800), snapshot.Secondary.ResetsAt);
     }
@@ -57,6 +74,16 @@ public sealed class CodexRateLimitsResponseParserTests
         Assert.Equal(55, snapshot.Primary.UsedPercent);
         Assert.Null(snapshot.Primary.WindowDurationMins);
         Assert.Null(snapshot.Primary.ResetsAt);
+    }
+
+    [Fact]
+    public void UnknownWindowDurationIsPreserved()
+    {
+        var snapshot = _parser.Parse(
+            CreateSuccessResponse(primaryWindowDurationMins: 12_345),
+            RequestId);
+
+        Assert.Equal(12_345, snapshot.Primary.WindowDurationMins);
     }
 
     [Theory]
@@ -164,6 +191,65 @@ public sealed class CodexRateLimitsResponseParserTests
     }
 
     [Fact]
+    public void ProviderSuppliedLimitNameIsPreservedWhenPresent()
+    {
+        var snapshot = _parser.Parse(
+            CreateSuccessResponse(extraRateLimitFields: """
+                ,
+                "limitName": "Synthetic limit"
+                """),
+            RequestId);
+
+        Assert.Equal("Synthetic limit", snapshot.LimitName);
+    }
+
+    [Fact]
+    public void RateLimitsByLimitIdAreParsedAsSeparateBuckets()
+    {
+        var snapshot = _parser.Parse(
+            CreateSuccessResponse(extraResultFields: """
+                ,
+                "rateLimitsByLimitId": {
+                  "codex": {
+                    "limitId": "codex",
+                    "primary": {
+                      "usedPercent": 14,
+                      "windowDurationMins": 10080,
+                      "resetsAt": 1785604800
+                    },
+                    "secondary": null
+                  },
+                  "codex_other": {
+                    "primary": {
+                      "usedPercent": 3,
+                      "windowDurationMins": 300,
+                      "resetsAt": 1785000000
+                    },
+                    "secondary": null
+                  }
+                }
+                """),
+            RequestId);
+
+        Assert.Collection(
+            snapshot.RateLimitsByLimitId,
+            codex =>
+            {
+                Assert.Equal("codex", codex.LimitId);
+                Assert.Equal(14, codex.Primary.UsedPercent);
+                Assert.Equal(10_080, codex.Primary.WindowDurationMins);
+                Assert.False(codex.Secondary.IsAvailable);
+            },
+            other =>
+            {
+                Assert.Equal("codex_other", other.LimitId);
+                Assert.Equal(3, other.Primary.UsedPercent);
+                Assert.Equal(300, other.Primary.WindowDurationMins);
+                Assert.False(other.Secondary.IsAvailable);
+            });
+    }
+
+    [Fact]
     public void ExceptionMessagesDoNotContainFixtureContent()
     {
         const string fixtureMarker = "FIXTURE_MARKER";
@@ -200,16 +286,18 @@ public sealed class CodexRateLimitsResponseParserTests
         string? primaryResetsAtJson = null,
         string? primaryJson = null,
         string? secondaryJson = null,
-        string extraRateLimitFields = "") =>
+        string extraRateLimitFields = "",
+        string extraResultFields = "") =>
         $$"""
         {
           "id": {{idJson}},
           "result": {
             "rateLimits": {
+              "limitId": "codex",
               "primary": {{primaryJson ?? CreateWindowJson(primaryUsedPercent, primaryWindowDurationMins, primaryResetsAt, primaryResetsAtJson)}},
               "secondary": {{secondaryJson ?? CreateWindowJson(secondaryUsedPercent, secondaryWindowDurationMins, 1_785_604_800, null)}},
               "rateLimitReachedType": "rate_limit_reached"{{extraRateLimitFields}}
-            },
+            }{{extraResultFields}},
             "ignoredMetadata": {
               "displayLabel": "ignored",
               "futureValue": "ignored"

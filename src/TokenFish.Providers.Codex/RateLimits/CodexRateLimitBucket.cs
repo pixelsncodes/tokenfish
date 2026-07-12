@@ -1,6 +1,6 @@
 namespace TokenFish.Providers.Codex.RateLimits;
 
-public sealed record CodexRateLimitsSnapshot
+public sealed record CodexRateLimitBucket
 {
     public string? LimitId { get; }
 
@@ -12,29 +12,12 @@ public sealed record CodexRateLimitsSnapshot
 
     public string? RateLimitReachedType { get; }
 
-    public IReadOnlyList<CodexRateLimitBucket> RateLimitsByLimitId { get; }
-
-    public CodexRateLimitsSnapshot(
-        CodexRateLimitWindow primary,
-        CodexRateLimitWindow secondary,
-        string? rateLimitReachedType)
-        : this(
-            limitId: null,
-            limitName: null,
-            primary,
-            secondary,
-            rateLimitReachedType,
-            rateLimitsByLimitId: [])
-    {
-    }
-
-    public CodexRateLimitsSnapshot(
+    public CodexRateLimitBucket(
         string? limitId,
         string? limitName,
         CodexRateLimitWindow primary,
         CodexRateLimitWindow secondary,
-        string? rateLimitReachedType,
-        IReadOnlyList<CodexRateLimitBucket> rateLimitsByLimitId)
+        string? rateLimitReachedType)
     {
         LimitId = string.IsNullOrWhiteSpace(limitId) ? null : limitId;
         LimitName = string.IsNullOrWhiteSpace(limitName) ? null : limitName;
@@ -43,7 +26,5 @@ public sealed record CodexRateLimitsSnapshot
         RateLimitReachedType = string.IsNullOrWhiteSpace(rateLimitReachedType)
             ? null
             : rateLimitReachedType;
-        RateLimitsByLimitId = rateLimitsByLimitId?.ToArray() ??
-            throw new ArgumentNullException(nameof(rateLimitsByLimitId));
     }
 }

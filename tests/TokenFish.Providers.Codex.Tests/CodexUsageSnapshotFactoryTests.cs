@@ -114,6 +114,41 @@ public sealed class CodexUsageSnapshotFactoryTests
     }
 
     [Fact]
+    public void SevenDayTokenTotalIsLatestSevenUtcDatesNotCalendarWeek()
+    {
+        var capturedAt = new DateTimeOffset(2026, 7, 15, 15, 30, 0, TimeSpan.Zero);
+
+        var snapshot = CreateSnapshot(
+            capturedAt: capturedAt,
+            dailyUsageBuckets:
+            [
+                Bucket(2026, 7, 8, 999),
+                Bucket(2026, 7, 9, 10),
+                Bucket(2026, 7, 10, 20),
+                Bucket(2026, 7, 11, 30),
+                Bucket(2026, 7, 12, 40),
+                Bucket(2026, 7, 13, 50),
+                Bucket(2026, 7, 14, 60),
+                Bucket(2026, 7, 15, 70)
+            ]);
+
+        Assert.Equal(280, snapshot.WeeklyTokens.TokenCount);
+    }
+
+    [Fact]
+    public void TokenActivityDoesNotPopulateQuotaFields()
+    {
+        var snapshot = CreateSnapshot(
+            primaryUsedPercent: null,
+            dailyUsageBuckets: [Bucket(2026, 7, 12, 123)]);
+
+        Assert.False(snapshot.UsageWindow.IsAvailable);
+        Assert.Null(snapshot.UsageWindowResetAt);
+        Assert.True(snapshot.WeeklyTokens.IsAvailable);
+        Assert.Equal(123, snapshot.WeeklyTokens.TokenCount);
+    }
+
+    [Fact]
     public void CaptureDateBucketIsIncluded()
     {
         var snapshot = CreateSnapshot(dailyUsageBuckets: [Bucket(2026, 7, 12, 123)]);

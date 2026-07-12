@@ -94,6 +94,7 @@ public sealed class CodexAppServerProtocolClientTests
         await client.ReadRateLimitsAsync(CancellationToken.None);
 
         Assert.Equal("account/rateLimits/read", ReadMethod(writer.Lines[2]));
+        Assert.False(HasParams(writer.Lines[2]));
     }
 
     [Fact]
@@ -106,6 +107,7 @@ public sealed class CodexAppServerProtocolClientTests
         await client.ReadAccountUsageAsync(CancellationToken.None);
 
         Assert.Equal("account/usage/read", ReadMethod(writer.Lines[2]));
+        Assert.False(HasParams(writer.Lines[2]));
     }
 
     [Fact]
@@ -323,6 +325,12 @@ public sealed class CodexAppServerProtocolClientTests
     {
         using var document = JsonDocument.Parse(line);
         return document.RootElement.TryGetProperty("id", out _);
+    }
+
+    private static bool HasParams(string line)
+    {
+        using var document = JsonDocument.Parse(line);
+        return document.RootElement.TryGetProperty("params", out _);
     }
 
     private static async Task WaitForWrittenLineAsync(RecordingTextWriter writer)

@@ -40,10 +40,15 @@ public sealed class CodexRateLimitsResponseParser
                 throw CreateMalformedResponseException();
             }
 
+            var defaultBucket = ParseBucket(rateLimitsElement);
+
             return new CodexRateLimitsSnapshot(
-                ParseWindow(rateLimitsElement, "primary"),
-                ParseWindow(rateLimitsElement, "secondary"),
-                ReadOptionalString(rateLimitsElement, "rateLimitReachedType"));
+                defaultBucket.LimitId,
+                defaultBucket.LimitName,
+                defaultBucket.Primary,
+                defaultBucket.Secondary,
+                defaultBucket.RateLimitReachedType,
+                ParseRateLimitsByLimitId(resultElement));
         }
         catch (CodexRateLimitsResponseParseException)
         {
@@ -113,6 +118,50 @@ public sealed class CodexRateLimitsResponseParser
             : null as DateTimeOffset?;
 
         return new CodexRateLimitWindow(usedPercent, windowDurationMins, resetsAt);
+    }
+
+    private static CodexRateLimitBucket ParseBucket(JsonElement rateLimitsElement) =>
+        new(
+            ReadOptionalString(rateLimitsElement, "limitId"),
+            ReadOptionalString(rateLimitsElement, "limitName"),
+            ParseWindow(rateLimitsElement, "primary"),
+            ParseWindow(rateLimitsElement, "secondary"),
+            ReadOptionalString(rateLimitsElement, "rateLimitReachedType"));
+
+    private static IReadOnlyList<CodexRateLimitBucket> ParseRateLimitsByLimitId(
+        JsonElement resultElement)
+    {
+        if (!resultElement.TryGetProperty("rateLimitsByLimitId", out var byLimitIdElement) ||
+            byLimitIdElement.ValueKind == JsonValueKind.Null)
+        {
+            return [];
+        }
+
+        if (byLimitIdElement.ValueKind != JsonValueKind.Object)
+        {
+            throw CreateMalformedResponseException();
+        }
+
+        var buckets = new List<CodexRateLimitBucket>();
+        foreach (var property in byLimitIdElement.EnumerateObject())
+        {
+            if (property.Value.ValueKind != JsonValueKind.Object)
+            {
+                throw CreateMalformedResponseException();
+            }
+
+            var bucket = ParseBucket(property.Value);
+            buckets.Add(bucket.LimitId is null
+                ? new CodexRateLimitBucket(
+                    property.Name,
+                    bucket.LimitName,
+                    bucket.Primary,
+                    bucket.Secondary,
+                    bucket.RateLimitReachedType)
+                : bucket);
+        }
+
+        return buckets;
     }
 
     private static long? ReadOptionalInt64(JsonElement parent, string propertyName)
