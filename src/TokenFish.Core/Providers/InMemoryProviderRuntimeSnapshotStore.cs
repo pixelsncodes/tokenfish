@@ -110,12 +110,16 @@ public sealed class InMemoryProviderRuntimeSnapshotStore : IProviderRuntimeSnaps
     private static bool HasAvailableKnownData(ProviderUsageSnapshot snapshot) =>
         IsAvailableKnown(snapshot.UsageWindow) ||
         IsAvailableKnown(snapshot.SessionTokens) ||
-        IsAvailableKnown(snapshot.WeeklyTokens);
+        IsAvailableKnown(snapshot.WeeklyTokens) ||
+        snapshot.QuotaWindows.Any(IsAvailableKnown) ||
+        snapshot.ActivityMetrics.Any(IsAvailableKnown);
 
     private static bool HasProviderReportedStaleData(ProviderUsageSnapshot snapshot) =>
         IsAvailableStale(snapshot.UsageWindow) ||
         IsAvailableStale(snapshot.SessionTokens) ||
-        IsAvailableStale(snapshot.WeeklyTokens);
+        IsAvailableStale(snapshot.WeeklyTokens) ||
+        snapshot.QuotaWindows.Any(IsAvailableStale) ||
+        snapshot.ActivityMetrics.Any(IsAvailableStale);
 
     private static bool IsAvailableKnown(PercentageUsageMetric metric) =>
         metric.IsAvailable && metric.Freshness != DataFreshness.Unknown;
@@ -127,6 +131,18 @@ public sealed class InMemoryProviderRuntimeSnapshotStore : IProviderRuntimeSnaps
         metric.IsAvailable && metric.Freshness == DataFreshness.Stale;
 
     private static bool IsAvailableStale(TokenCountMetric metric) =>
+        metric.IsAvailable && metric.Freshness == DataFreshness.Stale;
+
+    private static bool IsAvailableKnown(NormalizedQuotaWindow window) =>
+        window.IsAvailable && window.Freshness != DataFreshness.Unknown;
+
+    private static bool IsAvailableKnown(NormalizedActivityMetric metric) =>
+        metric.IsAvailable && metric.Freshness != DataFreshness.Unknown;
+
+    private static bool IsAvailableStale(NormalizedQuotaWindow window) =>
+        window.IsAvailable && window.Freshness == DataFreshness.Stale;
+
+    private static bool IsAvailableStale(NormalizedActivityMetric metric) =>
         metric.IsAvailable && metric.Freshness == DataFreshness.Stale;
 
     private sealed record StoredSnapshot(

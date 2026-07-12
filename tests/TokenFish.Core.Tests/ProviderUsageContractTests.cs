@@ -107,6 +107,33 @@ public sealed class ProviderUsageContractTests
             98_765,
             DataAuthority.TokenFishDerived,
             DataFreshness.Cached);
+        var quotaWindow = new NormalizedQuotaWindow(
+            ProviderKind.Claude,
+            "claude:synthetic:primary",
+            null,
+            UsageMetricLabelOrigin.Unknown,
+            65.5m,
+            resetAt,
+            TimeSpan.FromHours(5),
+            UsageMetricAvailability.Available,
+            capturedAt,
+            DataAuthority.LocalProviderReported,
+            DataFreshness.Live,
+            "synthetic/rateLimits");
+        var activityMetric = new NormalizedActivityMetric(
+            ProviderKind.Claude,
+            "claude:activity:synthetic:tokens",
+            null,
+            UsageMetricLabelOrigin.Unknown,
+            98_765,
+            UsageActivityUnit.Tokens,
+            capturedAt.AddDays(-6),
+            capturedAt.AddDays(1),
+            UsageMetricAvailability.Available,
+            capturedAt,
+            DataAuthority.TokenFishDerived,
+            DataFreshness.Cached,
+            "synthetic/usage");
 
         var snapshot = new ProviderUsageSnapshot(
             ProviderKind.Claude,
@@ -115,7 +142,9 @@ public sealed class ProviderUsageContractTests
             resetAt,
             sessionTokens,
             weeklyTokens,
-            capturedAt);
+            capturedAt,
+            [quotaWindow],
+            [activityMetric]);
 
         Assert.Equal(ProviderKind.Claude, snapshot.Provider);
         Assert.Equal(ProviderConnectionState.Connected, snapshot.ConnectionState);
@@ -123,6 +152,8 @@ public sealed class ProviderUsageContractTests
         Assert.Equal(resetAt, snapshot.UsageWindowResetAt);
         Assert.Same(sessionTokens, snapshot.SessionTokens);
         Assert.Same(weeklyTokens, snapshot.WeeklyTokens);
+        Assert.Equal([quotaWindow], snapshot.QuotaWindows);
+        Assert.Equal([activityMetric], snapshot.ActivityMetrics);
         Assert.Equal(capturedAt, snapshot.CapturedAt);
     }
 

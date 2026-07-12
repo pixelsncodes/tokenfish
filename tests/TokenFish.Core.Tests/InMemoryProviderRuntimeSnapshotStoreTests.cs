@@ -162,6 +162,42 @@ public sealed class InMemoryProviderRuntimeSnapshotStoreTests
     }
 
     [Fact]
+    public void NormalizedMetricsContributeToFreshness()
+    {
+        var store = CreateStore();
+        var capturedAt = DateTimeOffset.UtcNow;
+        var snapshot = new ProviderUsageSnapshot(
+            ProviderKind.Codex,
+            ProviderConnectionState.Connected,
+            PercentageUsageMetric.Unavailable(DataAuthority.LocalProviderReported, DataFreshness.Unknown),
+            null,
+            TokenCountMetric.Unavailable(DataAuthority.TokenFishDerived, DataFreshness.Unknown),
+            TokenCountMetric.Unavailable(DataAuthority.TokenFishDerived, DataFreshness.Unknown),
+            capturedAt,
+            [
+                new NormalizedQuotaWindow(
+                    ProviderKind.Codex,
+                    "codex:default:primary",
+                    null,
+                    UsageMetricLabelOrigin.Unknown,
+                    25m,
+                    capturedAt.AddHours(1),
+                    TimeSpan.FromHours(5),
+                    UsageMetricAvailability.Available,
+                    capturedAt,
+                    DataAuthority.LocalProviderReported,
+                    DataFreshness.Live,
+                    "account/rateLimits/read")
+            ],
+            []);
+
+        store.Store([snapshot]);
+
+        Assert.True(store.TryGetCurrent(ProviderKind.Codex, out var state));
+        Assert.Equal(DataFreshness.Live, state.EffectiveFreshness);
+    }
+
+    [Fact]
     public void ProviderReportedStaleFreshnessIsNotFalselyUpgraded()
     {
         var store = CreateStore();
