@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using TokenFish.Core.Models;
 using TokenFish.Core.Settings;
 
@@ -8,11 +9,6 @@ public sealed class LocalAppSettingsStore : IAppSettingsStore
 {
     private const int CurrentSchemaVersion = 1;
     private const string SettingsFileName = "settings.json";
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true
-    };
-
     private readonly string _settingsFilePath;
     private readonly Func<Stream, PersistedAppSettings, CancellationToken, Task> _serializeAsync;
 
@@ -67,7 +63,7 @@ public sealed class LocalAppSettingsStore : IAppSettingsStore
 
             persistedSettings = await JsonSerializer.DeserializeAsync<PersistedAppSettings>(
                 stream,
-                JsonOptions,
+                LocalAppSettingsJsonContext.Default.PersistedAppSettings,
                 cancellationToken);
         }
         catch (JsonException)
@@ -150,7 +146,11 @@ public sealed class LocalAppSettingsStore : IAppSettingsStore
         Stream stream,
         PersistedAppSettings settings,
         CancellationToken cancellationToken) =>
-        JsonSerializer.SerializeAsync(stream, settings, JsonOptions, cancellationToken);
+        JsonSerializer.SerializeAsync(
+            stream,
+            settings,
+            LocalAppSettingsJsonContext.Default.PersistedAppSettings,
+            cancellationToken);
 
     private static PersistedAppSettings MapToPersistence(AppSettings settings) =>
         new()
@@ -221,17 +221,21 @@ public sealed class LocalAppSettingsStore : IAppSettingsStore
         {
         }
     }
-
-    internal sealed record PersistedAppSettings
-    {
-        public int SchemaVersion { get; init; }
-
-        public string? ProviderSelectionMode { get; init; }
-
-        public string? ThemeMode { get; init; }
-
-        public string? CodexRuntimeMode { get; init; }
-
-        public string? CodexWslDistributionName { get; init; }
-    }
 }
+
+internal sealed record PersistedAppSettings
+{
+    public int SchemaVersion { get; init; }
+
+    public string? ProviderSelectionMode { get; init; }
+
+    public string? ThemeMode { get; init; }
+
+    public string? CodexRuntimeMode { get; init; }
+
+    public string? CodexWslDistributionName { get; init; }
+}
+
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(PersistedAppSettings))]
+internal sealed partial class LocalAppSettingsJsonContext : JsonSerializerContext;

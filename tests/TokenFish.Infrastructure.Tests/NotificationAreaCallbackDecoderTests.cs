@@ -98,6 +98,17 @@ public sealed class NotificationAreaCallbackDecoderTests
         Assert.Equal(Path.Combine(baseDirectory, "Assets", "AppIcon.ico"), path);
     }
 
+    [Fact]
+    public void IconPathResolutionDoesNotRequireIconFileToExist()
+    {
+        var baseDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+
+        var path = NotificationAreaIconPath.Resolve(baseDirectory);
+
+        Assert.Equal(Path.Combine(baseDirectory, "Assets", "AppIcon.ico"), path);
+        Assert.False(File.Exists(path));
+    }
+
     private static nint Version4(uint callback, uint iconId = IconId) =>
         (nint)(((iconId & 0xFFFF) << 16) | (callback & 0xFFFF));
 }

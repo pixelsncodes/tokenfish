@@ -70,6 +70,105 @@ public sealed class TrayPopupDisplayStateAdapterTests
     }
 
     [Fact]
+    public void InitialPopupProjectionBeforeFirstRefreshDoesNotThrow()
+    {
+        var exception = Record.Exception(() => CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [],
+            ApplicationRuntimeStatus.Starting));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void WaitingForFirstRefreshStateUsesNormalStartingPresentation()
+    {
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [],
+            ApplicationRuntimeStatus.Starting);
+        var provider = Assert.Single(state.Providers);
+
+        Assert.Equal(PopupApplicationDisplayState.Starting, state.ApplicationState);
+        Assert.Equal("Starting TokenFish", state.StatusText);
+        Assert.Equal("Waiting for first refresh", provider.ConnectionState);
+        Assert.Empty(provider.QuotaWindows);
+        Assert.Empty(provider.ActivityRows);
+        Assert.Null(provider.EmptyUsageMessage);
+        Assert.Equal(string.Empty, provider.FooterText);
+    }
+
+    [Fact]
+    public void EmptyNormalizedQuotaAndActivityCollectionsMapToNoDataState()
+    {
+        var provider = SingleProvider(CreateSnapshot(
+            ProviderKind.Codex,
+            quotaWindows: [],
+            activityMetrics: []));
+
+        Assert.Equal("Connected", provider.ConnectionState);
+        Assert.Empty(provider.QuotaWindows);
+        Assert.Empty(provider.ActivityRows);
+        Assert.Equal("Codex did not report usage data.", provider.EmptyUsageMessage);
+        Assert.Equal(string.Empty, provider.FooterText);
+    }
+
+    [Fact]
+    public void UnavailableNormalizedMetricsWithoutAvailableCaptureDataOmitFooter()
+    {
+        var capturedAt = new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero);
+        var provider = SingleProvider(CreateSnapshot(
+            ProviderKind.Codex,
+            connectionState: ProviderConnectionState.Disconnected,
+            quotaWindows:
+            [
+                NormalizedQuotaWindow.Unavailable(
+                    ProviderKind.Codex,
+                    "codex:default:primary",
+                    capturedAt,
+                    DataAuthority.LocalProviderReported,
+                    DataFreshness.Unknown,
+                    "account/rateLimits/read")
+            ],
+            activityMetrics:
+            [
+                NormalizedActivityMetric.Unavailable(
+                    ProviderKind.Codex,
+                    "codex:activity:latest-seven-utc-dates:tokens",
+                    UsageActivityUnit.Tokens,
+                    capturedAt,
+                    DataAuthority.TokenFishDerived,
+                    DataFreshness.Unknown,
+                    "account/usage/read")
+            ]));
+
+        Assert.Equal("Disconnected", provider.ConnectionState);
+        Assert.Empty(provider.QuotaWindows);
+        Assert.Empty(provider.ActivityRows);
+        Assert.Null(provider.EmptyUsageMessage);
+        Assert.Equal(string.Empty, provider.FooterText);
+    }
+
+    [Theory]
+    [InlineData(ApplicationRuntimeState.Starting)]
+    [InlineData(ApplicationRuntimeState.Running)]
+    [InlineData(ApplicationRuntimeState.Faulted)]
+    public void MainPopupStateConstructionDoesNotThrowForEmptyRuntimeData(
+        ApplicationRuntimeState runtimeState)
+    {
+        var status = runtimeState == ApplicationRuntimeState.Faulted
+            ? ApplicationRuntimeStatus.RefreshFaulted
+            : new ApplicationRuntimeStatus(runtimeState, ApplicationRuntimeIssue.None);
+
+        var exception = Record.Exception(() => CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [],
+            status));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
     public void PresentationModelDoesNotExposeLegacyTechnicalRows()
     {
         var propertyNames = typeof(ProviderCardDisplayState)
@@ -374,6 +473,7 @@ public sealed class TrayPopupDisplayStateAdapterTests
         Assert.Empty(provider.QuotaWindows);
         Assert.Empty(provider.ActivityRows);
         Assert.Equal("Codex did not report usage data.", provider.EmptyUsageMessage);
+        Assert.Equal(string.Empty, provider.FooterText);
     }
 
     [Theory]

@@ -10,8 +10,6 @@ public sealed class CodexAppServerProtocolClient : ICodexAppServerProtocolClient
 {
     private const int MaximumResponseLineLength = 1_048_576;
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     private readonly TextReader _reader;
     private readonly TextWriter _writer;
     private readonly string _clientVersion;
@@ -50,29 +48,13 @@ public sealed class CodexAppServerProtocolClient : ICodexAppServerProtocolClient
             var requestId = GetNextRequestId();
 
             await WriteJsonLineAsync(
-                new
-                {
-                    id = requestId,
-                    method = "initialize",
-                    @params = new
-                    {
-                        clientInfo = new
-                        {
-                            name = "tokenfish",
-                            title = "TokenFish",
-                            version = _clientVersion
-                        }
-                    }
-                },
+                CreateInitializeRequestJson(requestId, _clientVersion),
                 cancellationToken).ConfigureAwait(false);
 
             await ReadExpectedResponseLineAsync(requestId, cancellationToken).ConfigureAwait(false);
 
             await WriteJsonLineAsync(
-                new
-                {
-                    method = "initialized"
-                },
+                CreateInitializedNotificationJson(),
                 cancellationToken).ConfigureAwait(false);
 
             _initialized = true;
@@ -168,21 +150,65 @@ public sealed class CodexAppServerProtocolClient : ICodexAppServerProtocolClient
         string method,
         CancellationToken cancellationToken) =>
         WriteJsonLineAsync(
-            new
-            {
-                id = requestId,
-                method
-            },
+            CreateRequestWithoutParamsJson(requestId, method),
             cancellationToken);
 
     private async Task WriteJsonLineAsync(
-        object payload,
+        string line,
         CancellationToken cancellationToken)
     {
-        var line = JsonSerializer.Serialize(payload, JsonOptions);
-
         await _writer.WriteLineAsync(line.AsMemory(), cancellationToken).ConfigureAwait(false);
         await _writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string CreateInitializeRequestJson(long requestId, string clientVersion)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("id", requestId);
+            writer.WriteString("method", "initialize");
+            writer.WritePropertyName("params");
+            writer.WriteStartObject();
+            writer.WritePropertyName("clientInfo");
+            writer.WriteStartObject();
+            writer.WriteString("name", "tokenfish");
+            writer.WriteString("title", "TokenFish");
+            writer.WriteString("version", clientVersion);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static string CreateInitializedNotificationJson()
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("method", "initialized");
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static string CreateRequestWithoutParamsJson(long requestId, string method)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("id", requestId);
+            writer.WriteString("method", method);
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
     }
 
     private async Task<string> ReadExpectedResponseLineAsync(

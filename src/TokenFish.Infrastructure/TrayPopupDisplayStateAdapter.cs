@@ -290,14 +290,19 @@ public sealed class TrayPopupDisplayStateAdapter
         ProviderUsageSnapshot snapshot,
         DataFreshness effectiveFreshness)
     {
-        var capturedAt = snapshot.QuotaWindows
+        var capturedAtValues = snapshot.QuotaWindows
             .Where(window => window.IsAvailable)
             .Select(window => window.CapturedAt)
             .Concat(snapshot.ActivityMetrics
                 .Where(metric => metric.IsAvailable)
                 .Select(metric => metric.CapturedAt))
-            .DefaultIfEmpty(snapshot.CapturedAt)
-            .Max();
+            .ToArray();
+        if (capturedAtValues.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var capturedAt = capturedAtValues.Max();
 
         var text = $"{FormatUpdatedText(capturedAt)} · Reported by {GetProviderName(provider)}";
         return effectiveFreshness == DataFreshness.Stale
