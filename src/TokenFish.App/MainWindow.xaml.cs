@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using TokenFish.Infrastructure;
@@ -62,34 +63,96 @@ public sealed partial class MainWindow : Window
         var stack = new StackPanel { Spacing = 8 };
         card.Child = stack;
 
-        stack.Children.Add(new TextBlock
+        stack.Children.Add(CreateProviderHeader(provider));
+
+        foreach (var quotaWindow in provider.QuotaWindows)
+        {
+            stack.Children.Add(CreateQuotaWindowSection(quotaWindow));
+        }
+
+        return card;
+    }
+
+    private static UIElement CreateProviderHeader(ProviderCardDisplayState provider)
+    {
+        var grid = new Grid { ColumnSpacing = 12 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        grid.Children.Add(new TextBlock
         {
             Text = provider.ProviderName,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            FontSize = 15
+            FontSize = 15,
+            TextTrimming = TextTrimming.CharacterEllipsis
         });
 
-        stack.Children.Add(CreateRow("Connection", provider.ConnectionState));
-        stack.Children.Add(CreateRow("Usage", provider.UsageWindow));
-
-        if (provider.UsagePercentage.HasValue)
+        var connection = new TextBlock
         {
-            stack.Children.Add(new ProgressBar
+            Text = provider.ConnectionState,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+                "TextFillColorSecondaryBrush"],
+            TextAlignment = TextAlignment.Right,
+            TextWrapping = TextWrapping.NoWrap
+        };
+        AutomationProperties.SetName(connection, $"Connection {provider.ConnectionState}");
+        Grid.SetColumn(connection, 1);
+        grid.Children.Add(connection);
+
+        return grid;
+    }
+
+    private static UIElement CreateQuotaWindowSection(PopupQuotaWindowDisplayState quotaWindow)
+    {
+        var stack = new StackPanel { Spacing = 5 };
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = quotaWindow.Label,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.WrapWholeWords
+        });
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = quotaWindow.PercentageText,
+            FontSize = 20,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.NoWrap
+        });
+
+        var progress = new ProgressBar
+        {
+            Minimum = 0,
+            Maximum = 100,
+            Value = (double)quotaWindow.ProgressValue,
+            Height = 5
+        };
+        AutomationProperties.SetName(progress, quotaWindow.ProgressAutomationName);
+        stack.Children.Add(progress);
+
+        if (quotaWindow.RelativeResetText is not null)
+        {
+            stack.Children.Add(new TextBlock
             {
-                Minimum = 0,
-                Maximum = 100,
-                Value = (double)provider.UsagePercentage.Value,
-                Height = 4
+                Text = quotaWindow.RelativeResetText,
+                Margin = new Thickness(0, 2, 0, 0),
+                TextWrapping = TextWrapping.WrapWholeWords
             });
         }
 
-        stack.Children.Add(CreateRow("Reset", provider.Reset));
-        stack.Children.Add(CreateRow("Session", provider.SessionTokens));
-        stack.Children.Add(CreateRow("Weekly", provider.WeeklyTokens));
-        stack.Children.Add(CreateRow("Freshness", provider.Freshness));
-        stack.Children.Add(CreateRow("Authority", provider.DataAuthority));
+        if (quotaWindow.ExactResetText is not null)
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = quotaWindow.ExactResetText,
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+                    "TextFillColorSecondaryBrush"],
+                TextWrapping = TextWrapping.WrapWholeWords
+            });
+        }
 
-        return card;
+        return stack;
     }
 
     private static UIElement CreateRow(string label, string value)

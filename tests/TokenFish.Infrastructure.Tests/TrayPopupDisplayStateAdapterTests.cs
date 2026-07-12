@@ -288,6 +288,25 @@ public sealed class TrayPopupDisplayStateAdapterTests
     }
 
     [Fact]
+    public void UnavailableNormalizedQuotaWindowsAreOmitted()
+    {
+        var provider = SingleProvider(CreateSnapshot(
+            ProviderKind.Codex,
+            quotaWindows:
+            [
+                NormalizedQuotaWindow.Unavailable(
+                    ProviderKind.Codex,
+                    "codex:default:primary",
+                    new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
+                    DataAuthority.LocalProviderReported,
+                    DataFreshness.Unknown,
+                    "account/rateLimits/read")
+            ]));
+
+        Assert.Empty(provider.QuotaWindows);
+    }
+
+    [Fact]
     public void ExactResetTextUsesInjectedCultureAndTimeZone()
     {
         var resetAt = new DateTimeOffset(2026, 7, 19, 22, 0, 0, TimeSpan.Zero);
