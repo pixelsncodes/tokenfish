@@ -9,16 +9,19 @@ public sealed class TokenFishApplicationServices : IAsyncDisposable
     private static readonly TimeSpan DefaultProviderRefreshInterval = TimeSpan.FromMinutes(1);
 
     private readonly ProviderRefreshLifecycle _providerRefreshLifecycle;
+    private readonly IProviderRuntimeSnapshotStore _providerRuntimeSnapshotStore;
     private readonly IAsyncDisposable? _codexRuntimeOwner;
 
     private bool _disposed;
 
     private TokenFishApplicationServices(
         ProviderRefreshLifecycle providerRefreshLifecycle,
+        IProviderRuntimeSnapshotStore providerRuntimeSnapshotStore,
         IProviderUsageCollector? codexUsageCollector,
         IAsyncDisposable? codexRuntimeOwner)
     {
         _providerRefreshLifecycle = providerRefreshLifecycle;
+        _providerRuntimeSnapshotStore = providerRuntimeSnapshotStore;
         CodexUsageCollector = codexUsageCollector;
         _codexRuntimeOwner = codexRuntimeOwner;
     }
@@ -26,6 +29,9 @@ public sealed class TokenFishApplicationServices : IAsyncDisposable
     public IProviderUsageCollector? CodexUsageCollector { get; }
 
     public ProviderRefreshLifecycle ProviderRefreshLifecycle => _providerRefreshLifecycle;
+
+    public IProviderRuntimeSnapshotStore ProviderRuntimeSnapshotStore =>
+        _providerRuntimeSnapshotStore;
 
     public static TokenFishApplicationServices Create(
         AppSettings settings,
@@ -102,14 +108,19 @@ public sealed class TokenFishApplicationServices : IAsyncDisposable
         IAsyncDisposable? codexRuntimeOwner)
     {
         var coordinator = new ProviderUsageCollectionCoordinator(collectors);
+        var snapshotStore = new InMemoryProviderRuntimeSnapshotStore(
+            timeProvider,
+            providerRefreshInterval * 2);
         var providerRefreshLifecycle = new ProviderRefreshLifecycle(
             coordinator,
             settings,
             providerRefreshInterval,
-            timeProvider);
+            timeProvider,
+            snapshotStore);
 
         return new TokenFishApplicationServices(
             providerRefreshLifecycle,
+            snapshotStore,
             codexUsageCollector,
             codexRuntimeOwner);
     }

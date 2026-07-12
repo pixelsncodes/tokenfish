@@ -13,6 +13,7 @@ public sealed class ProviderRefreshLifecycle : IAsyncDisposable
     private readonly TimeSpan _refreshInterval;
     private readonly TimeProvider _timeProvider;
     private readonly Func<TimeSpan, TimeProvider, CancellationToken, Task> _delayAsync;
+    private readonly IProviderRuntimeSnapshotStore? _snapshotStore;
     private readonly CancellationTokenSource _shutdownCancellationTokenSource = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly object _sync = new();
@@ -28,13 +29,15 @@ public sealed class ProviderRefreshLifecycle : IAsyncDisposable
         ProviderUsageCollectionCoordinator coordinator,
         AppSettings settings,
         TimeSpan refreshInterval,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IProviderRuntimeSnapshotStore? snapshotStore = null)
         : this(
             coordinator,
             settings,
             refreshInterval,
             timeProvider ?? TimeProvider.System,
-            DefaultDelayAsync)
+            DefaultDelayAsync,
+            snapshotStore)
     {
     }
 
@@ -43,7 +46,8 @@ public sealed class ProviderRefreshLifecycle : IAsyncDisposable
         AppSettings settings,
         TimeSpan refreshInterval,
         TimeProvider timeProvider,
-        Func<TimeSpan, TimeProvider, CancellationToken, Task> delayAsync)
+        Func<TimeSpan, TimeProvider, CancellationToken, Task> delayAsync,
+        IProviderRuntimeSnapshotStore? snapshotStore = null)
     {
         ArgumentNullException.ThrowIfNull(coordinator);
         ArgumentNullException.ThrowIfNull(settings);
@@ -62,6 +66,7 @@ public sealed class ProviderRefreshLifecycle : IAsyncDisposable
         _refreshInterval = refreshInterval;
         _timeProvider = timeProvider;
         _delayAsync = delayAsync;
+        _snapshotStore = snapshotStore;
     }
 
     public Task Completion
@@ -228,8 +233,11 @@ public sealed class ProviderRefreshLifecycle : IAsyncDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            return await _coordinator.CollectAsync(_settings, cancellationToken)
+            var snapshots = await _coordinator.CollectAsync(_settings, cancellationToken)
                 .ConfigureAwait(false);
+            _snapshotStore?.Store(snapshots);
+
+            return snapshots;
         }
         finally
         {
