@@ -57,6 +57,7 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
         }
         catch
         {
+            CleanupNativeState();
             RaiseShellFaulted();
         }
     }
@@ -91,9 +92,7 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
 
         if (_added && !_removed)
         {
-            var data = CreateNotifyIconData();
-            NativeMethods.ShellNotifyIcon(NativeMethods.NimDelete, ref data);
-            _removed = true;
+            RemoveIcon();
         }
 
         if (_subclassed)
@@ -144,11 +143,22 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
             return;
         }
 
+        if (_windowHandle == 0 || !NativeMethods.IsWindow(_windowHandle))
+        {
+            throw new InvalidOperationException();
+        }
+
         var windowProcedurePointer = Marshal.GetFunctionPointerForDelegate(_windowProcedure);
+        Marshal.SetLastPInvokeError(0);
         _previousWindowProcedure = NativeMethods.SetWindowLongPtr(
             _windowHandle,
             NativeMethods.GwlpWndProc,
             windowProcedurePointer);
+        if (_previousWindowProcedure == 0 && Marshal.GetLastPInvokeError() != 0)
+        {
+            throw new InvalidOperationException();
+        }
+
         _subclassed = true;
     }
 
@@ -159,7 +169,7 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
             return;
         }
 
-        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+        var iconPath = NotificationAreaIconPath.Resolve(AppContext.BaseDirectory);
         _iconHandle = NativeMethods.LoadImage(
             0,
             iconPath,
@@ -178,23 +188,44 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
     {
         var data = CreateNotifyIconData();
 
-        if (!NativeMethods.ShellNotifyIcon(NativeMethods.NimAdd, ref data) && _added)
+        if (NativeMethods.ShellNotifyIcon(NativeMethods.NimAdd, ref data))
+        {
+            _added = true;
+            _removed = false;
+            SetVersionOrRemove();
+            return;
+        }
+
+        if (_added)
         {
             data = CreateNotifyIconData();
-            if (!NativeMethods.ShellNotifyIcon(NativeMethods.NimModify, ref data))
+            if (NativeMethods.ShellNotifyIcon(NativeMethods.NimModify, ref data))
+            {
+                _removed = false;
+                SetVersionOrRemove();
+                return;
+            }
+        }
+
+        throw new InvalidOperationException();
+    }
+
+    private void SetVersionOrRemove()
+    {
+        try
+        {
+            var data = CreateNotifyIconData();
+            data.Version = NativeMethods.NotifyIconVersion4;
+            if (!NativeMethods.ShellNotifyIcon(NativeMethods.NimSetVersion, ref data))
             {
                 throw new InvalidOperationException();
             }
         }
-        else
+        catch
         {
-            _added = true;
-            _removed = false;
+            RemoveIcon();
+            throw new InvalidOperationException();
         }
-
-        data = CreateNotifyIconData();
-        data.Version = NativeMethods.NotifyIconVersion4;
-        NativeMethods.ShellNotifyIcon(NativeMethods.NimSetVersion, ref data);
     }
 
     private NativeMethods.NotifyIconData CreateNotifyIconData() =>
@@ -215,13 +246,13 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
         {
             if (message == _taskbarCreatedMessage)
             {
-                Restore();
+                _dispatcherQueue.TryEnqueue(Restore);
                 return 0;
             }
 
             if (message == CallbackMessage)
             {
-                HandleIconCallback((uint)lParam);
+                HandleIconCallback(wParam, lParam);
                 return 0;
             }
         }
@@ -238,20 +269,33 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
             lParam);
     }
 
-    private void HandleIconCallback(uint callback)
+    private void HandleIconCallback(nint wParam, nint lParam)
     {
-        switch (callback)
+        var action = NotificationAreaCallbackDecoder.DecodeVersion4(wParam, lParam, IconId);
+        switch (action)
         {
-            case NativeMethods.WmLButtonUp:
-            case NativeMethods.NinSelect:
-            case NativeMethods.NinKeySelect:
+            case NotificationAreaCallbackAction.PrimaryActivate:
                 DispatchCommand(NotificationAreaCommand.PrimaryActivate);
                 break;
-            case NativeMethods.WmRButtonUp:
-            case NativeMethods.WmContextMenu:
-                ShowContextMenu();
+            case NotificationAreaCallbackAction.ContextMenu:
+                DispatchContextMenu();
                 break;
         }
+    }
+
+    private void DispatchContextMenu()
+    {
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                ShowContextMenu();
+            }
+            catch
+            {
+                RaiseShellFaulted();
+            }
+        });
     }
 
     private void ShowContextMenu()
@@ -264,11 +308,18 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
 
         try
         {
-            NativeMethods.AppendMenu(menuHandle, NativeMethods.MfString, RefreshCommandId, "Refresh");
-            NativeMethods.AppendMenu(menuHandle, NativeMethods.MfSeparator, 0, null);
-            NativeMethods.AppendMenu(menuHandle, NativeMethods.MfString, ExitCommandId, "Exit");
+            if (!NativeMethods.AppendMenu(menuHandle, NativeMethods.MfString, RefreshCommandId, "Refresh") ||
+                !NativeMethods.AppendMenu(menuHandle, NativeMethods.MfSeparator, 0, null) ||
+                !NativeMethods.AppendMenu(menuHandle, NativeMethods.MfString, ExitCommandId, "Exit"))
+            {
+                throw new InvalidOperationException();
+            }
 
-            NativeMethods.GetCursorPos(out var point);
+            if (!NativeMethods.GetCursorPos(out var point))
+            {
+                throw new InvalidOperationException();
+            }
+
             NativeMethods.SetForegroundWindow(_windowHandle);
             var command = NativeMethods.TrackPopupMenuEx(
                 menuHandle,
@@ -286,6 +337,8 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
             {
                 DispatchCommand(NotificationAreaCommand.Exit);
             }
+
+            NativeMethods.PostMessage(_windowHandle, NativeMethods.WmNull, 0, 0);
         }
         finally
         {
@@ -313,15 +366,44 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
         _dispatcherQueue.TryEnqueue(() => ShellFaulted?.Invoke());
     }
 
+    private void CleanupNativeState()
+    {
+        RemoveIcon();
+
+        if (_subclassed)
+        {
+            NativeMethods.SetWindowLongPtr(
+                _windowHandle,
+                NativeMethods.GwlpWndProc,
+                _previousWindowProcedure);
+            _subclassed = false;
+        }
+
+        if (_iconHandle != 0)
+        {
+            NativeMethods.DestroyIcon(_iconHandle);
+            _iconHandle = 0;
+        }
+    }
+
+    private void RemoveIcon()
+    {
+        if (!_added || _removed)
+        {
+            return;
+        }
+
+        var data = CreateNotifyIconData();
+        NativeMethods.ShellNotifyIcon(NativeMethods.NimDelete, ref data);
+        _removed = true;
+        _added = false;
+    }
+
     private static class NativeMethods
     {
         public const int GwlpWndProc = -4;
+        public const uint WmNull = 0x0000;
         public const uint WmApp = 0x8000;
-        public const uint WmLButtonUp = 0x0202;
-        public const uint WmRButtonUp = 0x0205;
-        public const uint WmContextMenu = 0x007B;
-        public const uint NinSelect = 0x0400;
-        public const uint NinKeySelect = 0x0401;
         public const uint NimAdd = 0x00000000;
         public const uint NimModify = 0x00000001;
         public const uint NimDelete = 0x00000002;
@@ -410,6 +492,10 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
         [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
         public static extern nint SetWindowLongPtr(nint hWnd, int index, nint newLong);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool IsWindow(nint hWnd);
+
         [DllImport("user32.dll", EntryPoint = "CallWindowProcW")]
         public static extern nint CallWindowProc(
             nint previousWindowProcedure,
@@ -462,5 +548,9 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
             int y,
             nint hWnd,
             nint parameters);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool PostMessage(nint hWnd, uint message, nint wParam, nint lParam);
     }
 }
