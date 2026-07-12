@@ -29,6 +29,18 @@ public sealed class TokenFishApplicationServicesTests
     }
 
     [Fact]
+    public async Task ResolvingRefreshLifecycleDoesNotCollectOrStartCodexOrWsl()
+    {
+        var factory = new RecordingCodexRuntimeFactory();
+        await using var services = CreateServices(factory);
+
+        _ = services.ProviderRefreshLifecycle;
+
+        Assert.Equal(1, factory.CreateCallCount);
+        Assert.Equal(0, factory.Collector.CollectCallCount);
+    }
+
+    [Fact]
     public async Task ApplicationCompositionUsesSettingsSelectedLaunchCommand()
     {
         var factory = new RecordingCodexRuntimeFactory();
@@ -65,6 +77,23 @@ public sealed class TokenFishApplicationServicesTests
         };
 
         await using var services = CreateServices(factory, settings);
+
+        Assert.Null(services.CodexUsageCollector);
+        Assert.Equal(0, factory.CreateCallCount);
+    }
+
+    [Fact]
+    public async Task ClaudeOnlyRefreshLifecycleDoesNotConstructCodexRuntime()
+    {
+        var factory = new RecordingCodexRuntimeFactory();
+        var settings = new AppSettings
+        {
+            ProviderSelectionMode = ProviderSelectionMode.ClaudeOnly
+        };
+
+        await using var services = CreateServices(factory, settings);
+
+        _ = services.ProviderRefreshLifecycle;
 
         Assert.Null(services.CodexUsageCollector);
         Assert.Equal(0, factory.CreateCallCount);
