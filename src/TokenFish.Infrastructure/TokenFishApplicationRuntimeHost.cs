@@ -12,6 +12,7 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
     private readonly CancellationTokenSource _shutdownCancellationTokenSource = new();
 
     private IApplicationRuntimeServices? _services;
+    private AppSettings? _currentSettings;
     private Task? _startupTask;
     private Task? _lifecycleCompletionObserver;
     private Task? _shutdownTask;
@@ -59,6 +60,17 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
             lock (_sync)
             {
                 return _services;
+            }
+        }
+    }
+
+    public AppSettings? CurrentSettings
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _currentSettings;
             }
         }
     }
@@ -179,6 +191,10 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
                 .ConfigureAwait(false);
 
             _shutdownCancellationTokenSource.Token.ThrowIfCancellationRequested();
+            lock (_sync)
+            {
+                _currentSettings = settings;
+            }
 
             var services = _createServices(settings, _clientVersion);
 

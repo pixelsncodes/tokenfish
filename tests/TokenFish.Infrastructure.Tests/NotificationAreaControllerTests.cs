@@ -198,6 +198,8 @@ public sealed class NotificationAreaControllerTests
         public ApplicationRuntimeStatus Status { get; private set; } =
             ApplicationRuntimeStatus.Running;
 
+        public TokenFish.Core.Models.AppSettings? CurrentSettings { get; }
+
         public event Action<ApplicationRuntimeStatus>? StatusChanged;
 
         public int RefreshCallCount { get; private set; }

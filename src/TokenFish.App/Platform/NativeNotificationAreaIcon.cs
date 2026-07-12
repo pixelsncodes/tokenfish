@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using TokenFish.Infrastructure;
+using Windows.Graphics;
 using WinRT.Interop;
 
 namespace TokenFish.App.Platform;
@@ -109,6 +110,31 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
             NativeMethods.DestroyIcon(_iconHandle);
             _iconHandle = 0;
         }
+    }
+
+    public bool TryGetIconRectangle(out RectInt32 rectangle)
+    {
+        rectangle = default;
+
+        var identifier = new NativeMethods.NotifyIconIdentifier
+        {
+            Size = (uint)Marshal.SizeOf<NativeMethods.NotifyIconIdentifier>(),
+            WindowHandle = _windowHandle,
+            Id = IconId
+        };
+
+        var result = NativeMethods.ShellNotifyIconGetRect(ref identifier, out var nativeRectangle);
+        if (result != 0)
+        {
+            return false;
+        }
+
+        rectangle = new RectInt32(
+            nativeRectangle.Left,
+            nativeRectangle.Top,
+            nativeRectangle.Right - nativeRectangle.Left,
+            nativeRectangle.Bottom - nativeRectangle.Top);
+        return true;
     }
 
     private void EnsureSubclassed()
@@ -350,9 +376,32 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
             public int Y;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        public struct NativeRectangle
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct NotifyIconIdentifier
+        {
+            public uint Size;
+            public nint WindowHandle;
+            public uint Id;
+            public Guid GuidItem;
+        }
+
         [DllImport("shell32.dll", EntryPoint = "Shell_NotifyIconW", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool ShellNotifyIcon(uint message, ref NotifyIconData data);
+
+        [DllImport("shell32.dll", EntryPoint = "Shell_NotifyIconGetRect", SetLastError = true)]
+        public static extern int ShellNotifyIconGetRect(
+            ref NotifyIconIdentifier identifier,
+            out NativeRectangle iconLocation);
 
         [DllImport("user32.dll", EntryPoint = "RegisterWindowMessageW", SetLastError = true)]
         public static extern uint RegisterWindowMessage(

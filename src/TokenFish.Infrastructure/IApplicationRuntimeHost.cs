@@ -4,6 +4,8 @@ public interface IApplicationRuntimeHost
 {
     ApplicationRuntimeStatus Status { get; }
 
+    TokenFish.Core.Models.AppSettings? CurrentSettings { get; }
+
     event Action<ApplicationRuntimeStatus>? StatusChanged;
 
     Task StartAsync(CancellationToken cancellationToken);

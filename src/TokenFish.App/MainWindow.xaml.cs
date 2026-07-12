@@ -1,18 +1,145 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using TokenFish.Infrastructure;
 
 namespace TokenFish.App;
 
 public sealed partial class MainWindow : Window
 {
+    private bool _allowClose;
+
     public MainWindow()
     {
         InitializeComponent();
 
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(AppTitleBar);
-
         AppWindow.SetIcon("Assets/AppIcon.ico");
+        AppWindow.Closing += OnAppWindowClosing;
+        Activated += OnActivated;
+        Content.KeyDown += OnKeyDown;
+    }
 
-        RootFrame.Navigate(typeof(MainPage));
+    public event Action? PopupDeactivated;
+
+    public event Action? PopupCloseRequested;
+
+    public void AllowClose() => _allowClose = true;
+
+    public void UpdateState(TrayPopupDisplayState state)
+    {
+        StatusText.Text = state.StatusText;
+        StatusBannerText.Text = state.StatusText;
+        StatusBanner.Visibility = state.ApplicationState is
+            PopupApplicationDisplayState.StartupIssue or
+            PopupApplicationDisplayState.RefreshIssue or
+            PopupApplicationDisplayState.ShutdownIssue or
+            PopupApplicationDisplayState.ShellIssue
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+        ProvidersPanel.Children.Clear();
+        foreach (var provider in state.Providers)
+        {
+            ProvidersPanel.Children.Add(CreateProviderCard(provider));
+        }
+    }
+
+    private static UIElement CreateProviderCard(ProviderCardDisplayState provider)
+    {
+        var card = new Border
+        {
+            Padding = new Thickness(12),
+            CornerRadius = new CornerRadius(6),
+            BorderThickness = new Thickness(1),
+            BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+                "CardStrokeColorDefaultBrush"],
+            Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+                "CardBackgroundFillColorDefaultBrush"]
+        };
+
+        var stack = new StackPanel { Spacing = 8 };
+        card.Child = stack;
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = provider.ProviderName,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            FontSize = 15
+        });
+
+        stack.Children.Add(CreateRow("Connection", provider.ConnectionState));
+        stack.Children.Add(CreateRow("Usage", provider.UsageWindow));
+
+        if (provider.UsagePercentage.HasValue)
+        {
+            stack.Children.Add(new ProgressBar
+            {
+                Minimum = 0,
+                Maximum = 100,
+                Value = (double)provider.UsagePercentage.Value,
+                Height = 4
+            });
+        }
+
+        stack.Children.Add(CreateRow("Reset", provider.Reset));
+        stack.Children.Add(CreateRow("Session", provider.SessionTokens));
+        stack.Children.Add(CreateRow("Weekly", provider.WeeklyTokens));
+        stack.Children.Add(CreateRow("Freshness", provider.Freshness));
+        stack.Children.Add(CreateRow("Authority", provider.DataAuthority));
+
+        return card;
+    }
+
+    private static UIElement CreateRow(string label, string value)
+    {
+        var grid = new Grid { ColumnSpacing = 12 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        grid.Children.Add(new TextBlock
+        {
+            Text = label,
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+                "TextFillColorSecondaryBrush"]
+        });
+
+        var valueBlock = new TextBlock
+        {
+            Text = value,
+            TextAlignment = TextAlignment.Right,
+            TextWrapping = TextWrapping.WrapWholeWords
+        };
+        Grid.SetColumn(valueBlock, 1);
+        grid.Children.Add(valueBlock);
+
+        return grid;
+    }
+
+    private void OnActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            PopupDeactivated?.Invoke();
+        }
+    }
+
+    private void OnKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Key == Windows.System.VirtualKey.Escape)
+        {
+            args.Handled = true;
+            PopupCloseRequested?.Invoke();
+        }
+    }
+
+    private void OnAppWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        if (_allowClose)
+        {
+            return;
+        }
+
+        args.Cancel = true;
+        PopupCloseRequested?.Invoke();
     }
 }
