@@ -21,6 +21,8 @@ public sealed partial class MainWindow : Window
 
     public event Action? PopupDeactivated;
 
+    public event Action? PopupActivated;
+
     public event Action? PopupCloseRequested;
 
     public void AllowClose() => _allowClose = true;
@@ -120,7 +122,10 @@ public sealed partial class MainWindow : Window
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
             PopupDeactivated?.Invoke();
+            return;
         }
+
+        PopupActivated?.Invoke();
     }
 
     private void OnKeyDown(object sender, KeyRoutedEventArgs args)

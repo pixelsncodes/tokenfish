@@ -72,11 +72,14 @@ internal static class PopupWindowPlacement
         window.AppWindow.Move(new PointInt32(left, top));
     }
 
-    public static void BringToForeground(Window window)
+    public static bool BringToForeground(Window window)
     {
         window.Activate();
-        NativeMethods.SetForegroundWindow(WindowNative.GetWindowHandle(window));
+        return NativeMethods.SetForegroundWindow(WindowNative.GetWindowHandle(window));
     }
+
+    public static bool IsForeground(Window window) =>
+        NativeMethods.GetForegroundWindow() == WindowNative.GetWindowHandle(window);
 
     private static RectInt32 GetFallbackAnchor(Window window)
     {
@@ -109,6 +112,9 @@ internal static class PopupWindowPlacement
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool SetForegroundWindow(nint hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern nint GetForegroundWindow();
 
         [DllImport("user32.dll")]
         public static extern uint GetDpiForWindow(nint hWnd);

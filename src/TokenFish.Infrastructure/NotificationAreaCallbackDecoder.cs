@@ -29,7 +29,7 @@ public static class NotificationAreaCallbackDecoder
             return NotificationAreaCallbackAction.None;
         }
 
-        return MapCallback(callback);
+        return MapVersion4Callback(callback);
     }
 
     public static NotificationAreaCallbackAction DecodeLegacy(
@@ -42,15 +42,25 @@ public static class NotificationAreaCallbackDecoder
             return NotificationAreaCallbackAction.None;
         }
 
-        return MapCallback((uint)lParam);
+        return MapLegacyCallback((uint)lParam);
     }
 
-    private static NotificationAreaCallbackAction MapCallback(uint callback) =>
+    private static NotificationAreaCallbackAction MapVersion4Callback(uint callback) =>
         callback switch
         {
-            WmLButtonUp or NinSelect or NinKeySelect =>
+            NinSelect or NinKeySelect =>
                 NotificationAreaCallbackAction.PrimaryActivate,
-            WmRButtonUp or WmContextMenu =>
+            WmContextMenu =>
+                NotificationAreaCallbackAction.ContextMenu,
+            _ => NotificationAreaCallbackAction.None
+        };
+
+    private static NotificationAreaCallbackAction MapLegacyCallback(uint callback) =>
+        callback switch
+        {
+            WmLButtonUp =>
+                NotificationAreaCallbackAction.PrimaryActivate,
+            WmRButtonUp =>
                 NotificationAreaCallbackAction.ContextMenu,
             _ => NotificationAreaCallbackAction.None
         };

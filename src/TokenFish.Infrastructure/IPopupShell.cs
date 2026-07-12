@@ -4,6 +4,10 @@ public interface IPopupShell
 {
     bool IsVisible { get; }
 
+    bool IsForeground { get; }
+
+    event Action? Activated;
+
     event Action? Deactivated;
 
     event Action? CloseRequested;

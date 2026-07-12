@@ -37,10 +37,12 @@ public partial class App : Application
         var icon = new NativeNotificationAreaIcon(_window, _window.DispatcherQueue);
         var popupShell = new MainWindowPopupShell(_popupWindow, icon);
         var popupTimer = new DispatcherPopupUpdateTimer(_window.DispatcherQueue);
+        var popupActionQueue = new DispatcherPopupActionQueue(_window.DispatcherQueue);
         _popupController = new TrayPopupController(
             popupShell,
             popupTimer,
-            RefreshPopupStateAsync);
+            RefreshPopupStateAsync,
+            popupActionQueue);
         _notificationAreaController = new NotificationAreaController(
             icon,
             _runtimeHost,

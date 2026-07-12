@@ -14,11 +14,16 @@ internal sealed class MainWindowPopupShell : IPopupShell
     {
         _window = window;
         _icon = icon;
+        _window.PopupActivated += OnPopupActivated;
         _window.PopupDeactivated += OnPopupDeactivated;
         _window.PopupCloseRequested += OnPopupCloseRequested;
     }
 
     public bool IsVisible { get; private set; }
+
+    public bool IsForeground => PopupWindowPlacement.IsForeground(_window);
+
+    public event Action? Activated;
 
     public event Action? Deactivated;
 
@@ -32,8 +37,9 @@ internal sealed class MainWindowPopupShell : IPopupShell
             ? rectangle
             : (Windows.Graphics.RectInt32?)null;
         PopupWindowPlacement.PositionBesideIcon(_window, iconRectangle);
-        PopupWindowPlacement.BringToForeground(_window);
+        _window.AppWindow.Show();
         IsVisible = true;
+        PopupWindowPlacement.BringToForeground(_window);
         return Task.CompletedTask;
     }
 
@@ -46,9 +52,26 @@ internal sealed class MainWindowPopupShell : IPopupShell
         return Task.CompletedTask;
     }
 
+    private void OnPopupActivated() => Activated?.Invoke();
+
     private void OnPopupDeactivated() => Deactivated?.Invoke();
 
     private void OnPopupCloseRequested() => CloseRequested?.Invoke();
+}
+
+internal sealed class DispatcherPopupActionQueue : IPopupActionQueue
+{
+    private readonly DispatcherQueue _dispatcherQueue;
+
+    public DispatcherPopupActionQueue(DispatcherQueue dispatcherQueue)
+    {
+        _dispatcherQueue = dispatcherQueue;
+    }
+
+    public void Enqueue(Action action)
+    {
+        _dispatcherQueue.TryEnqueue(() => action());
+    }
 }
 
 internal sealed class DispatcherPopupUpdateTimer : IPopupUpdateTimer

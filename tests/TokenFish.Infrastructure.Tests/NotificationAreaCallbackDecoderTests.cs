@@ -40,13 +40,13 @@ public sealed class NotificationAreaCallbackDecoderTests
     }
 
     [Theory]
-    [InlineData(NotificationAreaCallbackDecoder.WmLButtonUp, NotificationAreaCallbackAction.PrimaryActivate)]
-    [InlineData(NotificationAreaCallbackDecoder.WmRButtonUp, NotificationAreaCallbackAction.ContextMenu)]
-    public void CompatibleMouseNotificationsMapCorrectly(uint callback, NotificationAreaCallbackAction expectedAction)
+    [InlineData(NotificationAreaCallbackDecoder.WmLButtonUp)]
+    [InlineData(NotificationAreaCallbackDecoder.WmRButtonUp)]
+    public void Version4CompatibleMouseNotificationsAreIgnored(uint callback)
     {
         var action = NotificationAreaCallbackDecoder.DecodeVersion4(0, Version4(callback), IconId);
 
-        Assert.Equal(expectedAction, action);
+        Assert.Equal(NotificationAreaCallbackAction.None, action);
     }
 
     [Fact]
