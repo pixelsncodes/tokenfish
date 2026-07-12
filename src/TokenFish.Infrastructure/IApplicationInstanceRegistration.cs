@@ -1,6 +1,6 @@
 namespace TokenFish.Infrastructure;
 
-public interface IApplicationInstanceRegistration
+public interface IApplicationInstanceRegistration : IApplicationRelaunchActivationSource
 {
     bool IsCurrent { get; }
 

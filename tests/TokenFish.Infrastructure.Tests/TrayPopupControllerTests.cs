@@ -21,6 +21,70 @@ public sealed class TrayPopupControllerTests
     }
 
     [Fact]
+    public async Task RelaunchActivationShowsHiddenPopup()
+    {
+        var shell = new RecordingPopupShell();
+        var timer = new RecordingPopupUpdateTimer();
+        var queue = new RecordingPopupActionQueue();
+        using var controller = CreateController(shell, timer, queue);
+
+        await controller.ShowAsync(CancellationToken.None);
+
+        Assert.True(shell.IsVisible);
+        Assert.Equal(1, shell.ShowCallCount);
+        Assert.Equal(0, shell.HideCallCount);
+        Assert.Equal(1, timer.StartCallCount);
+    }
+
+    [Fact]
+    public async Task RelaunchActivationKeepsAlreadyVisiblePopupVisible()
+    {
+        var shell = new RecordingPopupShell();
+        var timer = new RecordingPopupUpdateTimer();
+        var queue = new RecordingPopupActionQueue();
+        using var controller = CreateController(shell, timer, queue);
+
+        await controller.ShowAsync(CancellationToken.None);
+        await controller.ShowAsync(CancellationToken.None);
+
+        Assert.True(shell.IsVisible);
+        Assert.Equal(2, shell.ShowCallCount);
+        Assert.Equal(0, shell.HideCallCount);
+        Assert.Equal(1, timer.StartCallCount);
+    }
+
+    [Fact]
+    public async Task RelaunchActivationNeverInvokesTrayToggleHidePath()
+    {
+        var shell = new RecordingPopupShell();
+        var timer = new RecordingPopupUpdateTimer();
+        var queue = new RecordingPopupActionQueue();
+        using var controller = CreateController(shell, timer, queue);
+
+        await controller.ToggleAsync(CancellationToken.None);
+        await controller.ShowAsync(CancellationToken.None);
+
+        Assert.True(shell.IsVisible);
+        Assert.Equal(0, shell.HideCallCount);
+    }
+
+    [Fact]
+    public async Task RelaunchShowPreservesTrayActivationToggleBehavior()
+    {
+        var shell = new RecordingPopupShell();
+        var timer = new RecordingPopupUpdateTimer();
+        var queue = new RecordingPopupActionQueue();
+        using var controller = CreateController(shell, timer, queue);
+
+        await controller.ShowAsync(CancellationToken.None);
+        await controller.ToggleAsync(CancellationToken.None);
+
+        Assert.False(shell.IsVisible);
+        Assert.Equal(1, shell.HideCallCount);
+        Assert.Equal(1, timer.StopCallCount);
+    }
+
+    [Fact]
     public async Task InitialDeactivationDuringActivationDoesNotHidePopup()
     {
         var shell = new RecordingPopupShell();

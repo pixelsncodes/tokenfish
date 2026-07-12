@@ -9,18 +9,28 @@ namespace TokenFish.App;
 
 public partial class App : Application
 {
+    private readonly ApplicationInstanceStartupCoordinator _startupCoordinator;
     private Window? _window;
     private MainWindow? _popupWindow;
     private readonly TokenFishApplicationRuntimeHost _runtimeHost;
     private NotificationAreaController? _notificationAreaController;
     private TrayPopupController? _popupController;
+    private ApplicationRelaunchActivationController? _relaunchActivationController;
     private readonly TrayPopupDisplayStateAdapter _displayStateAdapter = new();
     private readonly IProviderRuntimeSnapshotStore _emptySnapshotStore =
         new InMemoryProviderRuntimeSnapshotStore(TimeProvider.System, TimeSpan.FromMinutes(10));
     private bool _exitRequested;
 
     public App()
+        : this(new ApplicationInstanceStartupCoordinator(new WindowsAppInstanceRegistrar()))
     {
+    }
+
+    internal App(ApplicationInstanceStartupCoordinator startupCoordinator)
+    {
+        ArgumentNullException.ThrowIfNull(startupCoordinator);
+
+        _startupCoordinator = startupCoordinator;
         InitializeComponent();
         _runtimeHost = new TokenFishApplicationRuntimeHost(
             new LocalAppSettingsStore(),
@@ -49,6 +59,13 @@ public partial class App : Application
             () => _popupController?.ToggleAsync(CancellationToken.None) ?? Task.CompletedTask,
             ExitAsync);
         _notificationAreaController.Initialize();
+        _relaunchActivationController = new ApplicationRelaunchActivationController(
+            _startupCoordinator,
+            popupActionQueue,
+            cancellationToken =>
+                _popupController?.ShowAsync(cancellationToken) ?? Task.CompletedTask,
+            _runtimeHost.ReportShellFault);
+        _relaunchActivationController.Initialize();
         _runtimeHost.StatusChanged += OnRuntimeStatusChanged;
 
         _ = StartRuntimeAsync();
@@ -64,6 +81,7 @@ public partial class App : Application
     {
         if (!_exitRequested)
         {
+            _relaunchActivationController?.Dispose();
             _popupController?.Dispose();
             _notificationAreaController?.Dispose();
         }
@@ -101,15 +119,18 @@ public partial class App : Application
         if (_window is null)
         {
             await _runtimeHost.StopAsync(CancellationToken.None);
+            _relaunchActivationController?.Dispose();
             _popupController?.Dispose();
             _notificationAreaController?.Dispose();
             return;
         }
 
         _exitRequested = true;
+        _relaunchActivationController?.BeginShutdown();
         _window.AppWindow.Hide();
 
         await _runtimeHost.StopAsync(CancellationToken.None);
+        _relaunchActivationController?.Dispose();
         _popupController?.Dispose();
         _notificationAreaController?.Dispose();
         _popupWindow?.AllowClose();

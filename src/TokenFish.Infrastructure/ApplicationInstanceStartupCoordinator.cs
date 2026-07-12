@@ -1,13 +1,15 @@
 namespace TokenFish.Infrastructure;
 
-public sealed class ApplicationInstanceStartupCoordinator
+public sealed class ApplicationInstanceStartupCoordinator : IApplicationRelaunchActivationSource
 {
     public const string RegistrationKey = "TokenFish.Application.SingleInstance.v1";
 
     private readonly IApplicationInstanceRegistrar _registrar;
     private readonly SemaphoreSlim _decisionGate = new(1, 1);
+    private readonly object _sync = new();
 
     private ApplicationInstanceStartupResult? _decision;
+    private IApplicationInstanceRegistration? _primaryRegistration;
 
     public ApplicationInstanceStartupCoordinator(IApplicationInstanceRegistrar registrar)
     {
@@ -66,6 +68,11 @@ public sealed class ApplicationInstanceStartupCoordinator
 
         if (registration.IsCurrent)
         {
+            lock (_sync)
+            {
+                _primaryRegistration ??= registration;
+            }
+
             return ApplicationInstanceStartupResult.Primary;
         }
 
@@ -89,5 +96,24 @@ public sealed class ApplicationInstanceStartupCoordinator
             return ApplicationInstanceStartupResult.Closed(
                 ApplicationInstanceStartupIssue.RedirectionFailed);
         }
+    }
+
+    public IDisposable SubscribeActivated(Action activationHandler)
+    {
+        ArgumentNullException.ThrowIfNull(activationHandler);
+
+        IApplicationInstanceRegistration? primaryRegistration;
+        lock (_sync)
+        {
+            primaryRegistration = _primaryRegistration;
+        }
+
+        if (primaryRegistration is null)
+        {
+            throw new InvalidOperationException(
+                "Relaunch activation can only be subscribed after primary ownership is established.");
+        }
+
+        return primaryRegistration.SubscribeActivated(activationHandler);
     }
 }

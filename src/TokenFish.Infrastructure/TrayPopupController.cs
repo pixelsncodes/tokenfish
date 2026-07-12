@@ -77,6 +77,47 @@ public sealed class TrayPopupController : IDisposable
         }
     }
 
+    public async Task ShowAsync(CancellationToken cancellationToken)
+    {
+        long generation;
+        var newActivation = false;
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _intendedVisible = true;
+            if (!_shell.IsVisible)
+            {
+                _activationPending = true;
+                generation = ++_activationGeneration;
+                newActivation = true;
+            }
+            else
+            {
+                generation = _activationGeneration;
+            }
+        }
+
+        try
+        {
+            await _refreshAsync(cancellationToken).ConfigureAwait(false);
+            await _shell.ShowAsync(cancellationToken).ConfigureAwait(false);
+            StartTimerIfCurrent(generation);
+        }
+        catch
+        {
+            if (newActivation)
+            {
+                CancelActivation(generation);
+            }
+
+            throw;
+        }
+    }
+
     public async Task HideAsync(CancellationToken cancellationToken)
     {
         var stopTimer = false;

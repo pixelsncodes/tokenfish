@@ -13,13 +13,14 @@ internal static class Program
 
         ComWrappersSupport.InitializeComWrappers();
 
-        var startupRunner = new ApplicationInstanceStartupRunner(
-            new ApplicationInstanceStartupCoordinator(new WindowsAppInstanceRegistrar()));
+        var startupCoordinator = new ApplicationInstanceStartupCoordinator(
+            new WindowsAppInstanceRegistrar());
+        var startupRunner = new ApplicationInstanceStartupRunner(startupCoordinator);
         _ = startupRunner
             .RunAsync(
                 () =>
                 {
-                    Application.Start(_ => new App());
+                    Application.Start(_ => new App(startupCoordinator));
                     return Task.CompletedTask;
                 },
                 CancellationToken.None)

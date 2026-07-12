@@ -39,6 +39,17 @@ internal sealed class WindowsAppInstanceRegistration : IApplicationInstanceRegis
             .RedirectActivationToAsync(windowsArguments.Arguments)
             .AsTask(cancellationToken);
     }
+
+    public IDisposable SubscribeActivated(Action activationHandler)
+    {
+        ArgumentNullException.ThrowIfNull(activationHandler);
+
+        EventHandler<AppActivationArguments> handler =
+            (_, _) => activationHandler();
+        _instance.Activated += handler;
+
+        return new CallbackDisposable(() => _instance.Activated -= handler);
+    }
 }
 
 internal sealed class WindowsApplicationInstanceActivationArguments :
@@ -50,4 +61,26 @@ internal sealed class WindowsApplicationInstanceActivationArguments :
     }
 
     public AppActivationArguments Arguments { get; }
+}
+
+internal sealed class CallbackDisposable : IDisposable
+{
+    private readonly Action _dispose;
+    private bool _disposed;
+
+    public CallbackDisposable(Action dispose)
+    {
+        _dispose = dispose;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _dispose();
+    }
 }

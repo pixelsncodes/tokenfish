@@ -157,6 +157,8 @@ public sealed class ApplicationInstanceStartupCoordinatorTests
 
     private sealed class RecordingInstanceRegistration : IApplicationInstanceRegistration
     {
+        private Action? _activationHandler;
+
         public bool IsCurrent { get; init; }
 
         public int RedirectCallCount { get; private set; }
@@ -175,9 +177,29 @@ public sealed class ApplicationInstanceStartupCoordinatorTests
             return RedirectAsyncCallback?.Invoke(activationArguments, cancellationToken) ??
                 Task.CompletedTask;
         }
+
+        public IDisposable SubscribeActivated(Action activationHandler)
+        {
+            _activationHandler += activationHandler;
+            return new CallbackDisposable(() => _activationHandler -= activationHandler);
+        }
+
+        public void RaiseActivated() => _activationHandler?.Invoke();
     }
 
     private sealed class RecordingActivationArguments : IApplicationInstanceActivationArguments
     {
+    }
+
+    private sealed class CallbackDisposable : IDisposable
+    {
+        private readonly Action _dispose;
+
+        public CallbackDisposable(Action dispose)
+        {
+            _dispose = dispose;
+        }
+
+        public void Dispose() => _dispose();
     }
 }
