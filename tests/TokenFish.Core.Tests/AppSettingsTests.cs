@@ -11,6 +11,8 @@ public sealed class AppSettingsTests
 
         Assert.Equal(ProviderSelectionMode.Both, settings.ProviderSelectionMode);
         Assert.Equal(ThemeMode.Minimal, settings.ThemeMode);
+        Assert.Equal(CodexRuntimeMode.WslLoginShell, settings.CodexRuntimeMode);
+        Assert.Null(settings.CodexWslDistributionName);
     }
 
     [Fact]
@@ -55,6 +57,14 @@ public sealed class AppSettingsTests
         Assert.Equal(
             new[] { "ClaudeOnly", "CodexOnly", "Both" },
             Enum.GetNames<ProviderSelectionMode>());
+    }
+
+    [Fact]
+    public void CodexRuntimeModesRemainValid()
+    {
+        Assert.Equal(
+            new[] { "NativeWindows", "Wsl", "WslLoginShell" },
+            Enum.GetNames<CodexRuntimeMode>());
     }
 
     [Fact]

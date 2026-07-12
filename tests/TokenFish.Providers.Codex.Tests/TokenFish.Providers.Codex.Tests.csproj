@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\TokenFish.Infrastructure\TokenFish.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\TokenFish.Providers.Codex\TokenFish.Providers.Codex.csproj" />
   </ItemGroup>
 
