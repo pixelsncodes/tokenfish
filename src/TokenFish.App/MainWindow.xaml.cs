@@ -126,6 +126,7 @@ public sealed partial class MainWindow : Window
     private static ProviderCardView CreateProviderCard(ProviderCardDisplayState provider)
     {
         var accent = GetProviderAccent(provider.Provider);
+        var railAccent = GetProviderRailAccent(provider.Provider);
         var card = new Border
         {
             Padding = new Thickness(14, 12, 14, 12),
@@ -144,7 +145,7 @@ public sealed partial class MainWindow : Window
         var quotaViews = new List<QuotaWindowView>(provider.QuotaWindows.Count);
         foreach (var quotaWindow in provider.QuotaWindows)
         {
-            var quotaView = CreateQuotaWindowSection(quotaWindow, accent);
+            var quotaView = CreateQuotaWindowSection(quotaWindow, accent, railAccent);
             quotaViews.Add(quotaView);
             stack.Children.Add(quotaView.Root);
         }
@@ -234,7 +235,8 @@ public sealed partial class MainWindow : Window
 
     private static QuotaWindowView CreateQuotaWindowSection(
         PopupQuotaWindowDisplayState quotaWindow,
-        Brush accent)
+        Brush accent,
+        Brush railAccent)
     {
         var stack = new StackPanel { Spacing = 5 };
 
@@ -263,7 +265,7 @@ public sealed partial class MainWindow : Window
         header.Children.Add(percentageText);
         stack.Children.Add(header);
 
-        var rail = CreateQuotaRail(quotaWindow, accent);
+        var rail = CreateQuotaRail(quotaWindow, accent, railAccent);
         stack.Children.Add(rail.Root);
 
         TextBlock? relativeReset = null;
@@ -301,7 +303,10 @@ public sealed partial class MainWindow : Window
             exactReset);
     }
 
-    private static QuotaRailView CreateQuotaRail(PopupQuotaWindowDisplayState quotaWindow, Brush accent)
+    private static QuotaRailView CreateQuotaRail(
+        PopupQuotaWindowDisplayState quotaWindow,
+        Brush accent,
+        Brush railAccent)
     {
         const double railWidth = PopupRailWidth;
         const double fishWidth = FishWidth;
@@ -320,6 +325,15 @@ public sealed partial class MainWindow : Window
             Background = CreateBrush(0xFF, 0x29, 0x38, 0x4A),
             Margin = new Thickness(0, 9, 0, 0)
         });
+        var railRemainder = new Border
+        {
+            Height = 4,
+            CornerRadius = new CornerRadius(2),
+            Background = railAccent,
+            Margin = new Thickness(0, 9, 0, 0)
+        };
+        AutomationProperties.SetAccessibilityView(railRemainder, AccessibilityView.Raw);
+        canvas.Children.Add(railRemainder);
 
         for (var index = 0; index < 12; index++)
         {
@@ -373,7 +387,7 @@ public sealed partial class MainWindow : Window
         Canvas.SetTop(fish, -1.5);
         StartFishMouthAnimation(tail);
 
-        var view = new QuotaRailView(canvas, fish, railWidth, fishWidth);
+        var view = new QuotaRailView(canvas, fish, railRemainder, railWidth, fishWidth);
         view.Update(quotaWindow);
         return view;
     }
@@ -382,6 +396,11 @@ public sealed partial class MainWindow : Window
         provider == TokenFish.Core.Models.ProviderKind.Claude
             ? CreateBrush(0xFF, 0xFF, 0x88, 0x5A)
             : CreateBrush(0xFF, 0x52, 0xD6, 0xD0);
+
+    private static Brush GetProviderRailAccent(TokenFish.Core.Models.ProviderKind provider) =>
+        provider == TokenFish.Core.Models.ProviderKind.Claude
+            ? GetProviderAccent(provider)
+            : CreateBrush(0xFF, 0x5B, 0x8D, 0xFF);
 
     private static Brush CreateBrush(byte alpha, byte red, byte green, byte blue) =>
         new SolidColorBrush(Color.FromArgb(alpha, red, green, blue));
@@ -683,15 +702,22 @@ public sealed partial class MainWindow : Window
 
     private sealed class QuotaRailView
     {
-        public QuotaRailView(Canvas root, Canvas crawler, double railWidth, double crawlerWidth)
+        public QuotaRailView(
+            Canvas root,
+            Canvas crawler,
+            Border remainder,
+            double railWidth,
+            double crawlerWidth)
         {
             Root = root;
             _crawler = crawler;
+            _remainder = remainder;
             _railWidth = railWidth;
             _crawlerWidth = crawlerWidth;
         }
 
         private readonly Canvas _crawler;
+        private readonly Border _remainder;
         private readonly double _railWidth;
         private readonly double _crawlerWidth;
 
@@ -699,12 +725,15 @@ public sealed partial class MainWindow : Window
 
         public void Update(PopupQuotaWindowDisplayState state)
         {
-            Canvas.SetLeft(
-                _crawler,
-                QuotaRailPositionCalculator.CalculateCrawlerOffset(
-                    state.ProgressValue,
-                    _railWidth,
-                    _crawlerWidth));
+            var crawlerOffset = QuotaRailPositionCalculator.CalculateCrawlerOffset(
+                state.ProgressValue,
+                _railWidth,
+                _crawlerWidth);
+            Canvas.SetLeft(_crawler, crawlerOffset);
+
+            var remainderStart = crawlerOffset + _crawlerWidth;
+            Canvas.SetLeft(_remainder, remainderStart);
+            _remainder.Width = Math.Max(0, _railWidth - remainderStart);
         }
     }
 
