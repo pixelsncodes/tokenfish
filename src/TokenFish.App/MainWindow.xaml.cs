@@ -31,6 +31,8 @@ public sealed partial class MainWindow : Window
 
     public event Action? ContentSizeInvalidated;
 
+    public event Action? RefreshRequested;
+
     public void AllowClose() => _allowClose = true;
 
     private void InitializeIconSurfaces()
@@ -99,6 +101,7 @@ public sealed partial class MainWindow : Window
         var plan = _updatePlanner.Plan(state);
         SetTextIfChanged(StatusText, state.StatusText);
         SetTextIfChanged(StatusBannerText, state.StatusText);
+        SetRefreshCommandState(state.RefreshCommandState);
         var statusBannerVisibility = state.ApplicationState is
             PopupApplicationDisplayState.StartupIssue or
             PopupApplicationDisplayState.RefreshIssue or
@@ -390,6 +393,22 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void SetRefreshCommandState(ManualRefreshCommandState state)
+    {
+        if (!Equals(RefreshNowButton.Content, state.Label))
+        {
+            RefreshNowButton.Content = state.Label;
+        }
+
+        RefreshNowButton.IsEnabled = state.IsEnabled;
+        SetTextIfChanged(RefreshCommandStatusText, state.StatusText);
+        SetVisibilityIfChanged(
+            RefreshCommandStatusText,
+            string.IsNullOrWhiteSpace(state.StatusText)
+                ? Visibility.Collapsed
+                : Visibility.Visible);
+    }
+
     private sealed class ProviderCardView
     {
         public ProviderCardView(
@@ -597,6 +616,13 @@ public sealed partial class MainWindow : Window
             args.Handled = true;
             PopupCloseRequested?.Invoke();
         }
+    }
+
+    private void OnRefreshNowClicked(object sender, RoutedEventArgs args)
+    {
+        _ = sender;
+        _ = args;
+        RefreshRequested?.Invoke();
     }
 
     private void OnAppWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)

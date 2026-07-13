@@ -111,7 +111,8 @@ public sealed class PopupDisplayStateUpdatePlanner
         TrayPopupDisplayState next)
     {
         if (previous.ApplicationState != next.ApplicationState ||
-            previous.StatusText != next.StatusText)
+            previous.StatusText != next.StatusText ||
+            previous.RefreshCommandState != next.RefreshCommandState)
         {
             return true;
         }

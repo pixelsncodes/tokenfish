@@ -46,6 +46,7 @@ public partial class App : Application
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         _popupWindow = new MainWindow();
+        _popupWindow.RefreshRequested += OnPopupRefreshRequested;
         PopupWindowPlacement.Configure(_popupWindow);
         _window = _popupWindow;
         _window.Closed += OnWindowClosed;
@@ -78,6 +79,7 @@ public partial class App : Application
         _relaunchActivationController.Initialize();
         _runtimeHost.StatusChanged += OnRuntimeStatusChanged;
         _runtimeHost.RefreshStatusChanged += OnRefreshStatusChanged;
+        _manualRefreshCommand.StateChanged += OnManualRefreshCommandStateChanged;
         _shutdownCoordinator = new ApplicationShutdownCoordinator(
             CleanupForExitAsync,
             CompleteApplicationShutdown,
@@ -99,7 +101,12 @@ public partial class App : Application
             _relaunchActivationController?.Dispose();
             _popupController?.Dispose();
             _notificationAreaController?.Dispose();
+            _manualRefreshCommand.StateChanged -= OnManualRefreshCommandStateChanged;
             _manualRefreshCommand.Dispose();
+            if (_popupWindow is not null)
+            {
+                _popupWindow.RefreshRequested -= OnPopupRefreshRequested;
+            }
         }
 
         await _runtimeHost.StopAsync(CancellationToken.None);
@@ -119,6 +126,7 @@ public partial class App : Application
             settings,
             _runtimeHost.Status,
             _runtimeHost.RefreshStatus,
+            _manualRefreshCommand.State,
             snapshotStore);
         _popupWindow.UpdateState(state);
 
@@ -163,6 +171,18 @@ public partial class App : Application
         });
     }
 
+    private void OnManualRefreshCommandStateChanged(ManualRefreshCommandState state)
+    {
+        _ = state;
+        _window?.DispatcherQueue.TryEnqueue(() =>
+        {
+            _ = RefreshPopupStateAsync(CancellationToken.None);
+        });
+    }
+
+    private void OnPopupRefreshRequested() =>
+        _ = _manualRefreshCommand.RequestAsync(CancellationToken.None);
+
     private async Task ExitAsync()
     {
         _shutdownCoordinator ??= new ApplicationShutdownCoordinator(
@@ -182,6 +202,7 @@ public partial class App : Application
             _relaunchActivationController?.Dispose();
             _popupController?.Dispose();
             _notificationAreaController?.Dispose();
+            _manualRefreshCommand.StateChanged -= OnManualRefreshCommandStateChanged;
             _manualRefreshCommand.Dispose();
             return;
         }
@@ -195,7 +216,12 @@ public partial class App : Application
         _relaunchActivationController?.Dispose();
         _popupController?.Dispose();
         _notificationAreaController?.Dispose();
+        _manualRefreshCommand.StateChanged -= OnManualRefreshCommandStateChanged;
         _manualRefreshCommand.Dispose();
+        if (_popupWindow is not null)
+        {
+            _popupWindow.RefreshRequested -= OnPopupRefreshRequested;
+        }
         _popupWindow?.AllowClose();
         _window.Closed -= OnWindowClosed;
         _window.Close();

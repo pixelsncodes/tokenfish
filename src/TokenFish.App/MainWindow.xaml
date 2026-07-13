@@ -19,6 +19,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <Grid ColumnSpacing="10">
@@ -64,5 +65,29 @@
             VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="ProvidersPanel" Spacing="10" />
         </ScrollViewer>
+
+        <Grid
+            Grid.Row="3"
+            ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                x:Name="RefreshCommandStatusText"
+                VerticalAlignment="Center"
+                AutomationProperties.LiveSetting="Polite"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextWrapping="Wrap"
+                Visibility="Collapsed" />
+
+            <Button
+                x:Name="RefreshNowButton"
+                Grid.Column="1"
+                AutomationProperties.Name="Refresh usage now"
+                Click="OnRefreshNowClicked"
+                Content="Refresh now" />
+        </Grid>
     </Grid>
 </Window>

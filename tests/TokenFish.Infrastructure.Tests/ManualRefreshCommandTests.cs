@@ -112,6 +112,17 @@ public sealed class ManualRefreshCommandTests
     }
 
     [Fact]
+    public async Task PopupClickUsesSharedCommandRequest()
+    {
+        var host = new RecordingRuntimeHost();
+        using var sharedCommand = new ManualRefreshCommand(host);
+
+        await sharedCommand.RequestAsync(CancellationToken.None);
+
+        Assert.Equal(1, host.RefreshCallCount);
+    }
+
+    [Fact]
     public async Task TrayRequestFollowedByPopupRequestDoesNotQueue()
     {
         var host = CreateBlockingHost();

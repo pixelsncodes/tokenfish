@@ -245,6 +245,35 @@ public sealed class TrayPopupDisplayStateAdapterTests
     }
 
     [Fact]
+    public void IdlePopupStateShowsEnabledRefreshNow()
+    {
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [],
+            ApplicationRuntimeStatus.Running,
+            refreshCommandState: ManualRefreshCommandState.Available);
+
+        Assert.True(state.RefreshCommandState.IsEnabled);
+        Assert.Equal("Refresh now", state.RefreshCommandState.Label);
+        Assert.Equal(string.Empty, state.RefreshCommandState.StatusText);
+    }
+
+    [Fact]
+    public void ActivePopupStateShowsDisabledRefreshing()
+    {
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [],
+            ApplicationRuntimeStatus.Running,
+            refreshStatus: RefreshingStatus(),
+            refreshCommandState: ManualRefreshCommandState.Refreshing);
+
+        Assert.False(state.RefreshCommandState.IsEnabled);
+        Assert.Equal("Refreshing…", state.RefreshCommandState.Label);
+        Assert.Equal("Refreshing usage", state.RefreshCommandState.StatusText);
+    }
+
+    [Fact]
     public void ActiveRefreshWithNoPriorValuesShowsUpdatingAndWaitingProvider()
     {
         var state = CreateState(
@@ -259,6 +288,7 @@ public sealed class TrayPopupDisplayStateAdapterTests
         Assert.Equal("Waiting for first refresh", provider.ConnectionState);
         Assert.Empty(provider.QuotaWindows);
         Assert.Empty(provider.ActivityRows);
+        Assert.False(state.RefreshCommandState.IsEnabled);
     }
 
     [Fact]
@@ -275,7 +305,9 @@ public sealed class TrayPopupDisplayStateAdapterTests
         var provider = Assert.Single(state.Providers);
 
         Assert.Equal("Updating…", state.StatusText);
-        Assert.Equal("14% used", Assert.Single(provider.QuotaWindows).PercentageText);
+        var quotaWindow = Assert.Single(provider.QuotaWindows);
+        Assert.Equal("14% used", quotaWindow.PercentageText);
+        Assert.Equal(14m, quotaWindow.ProgressValue);
         Assert.Equal("100", Assert.Single(provider.ActivityRows).ValueText);
     }
 
@@ -326,6 +358,50 @@ public sealed class TrayPopupDisplayStateAdapterTests
         Assert.Equal("14% used", Assert.Single(provider.QuotaWindows).PercentageText);
         Assert.DoesNotContain("C:\\Users", state.StatusText, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("exception", state.StatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Refresh now", state.RefreshCommandState.Label);
+        Assert.True(state.RefreshCommandState.IsEnabled);
+    }
+
+    [Fact]
+    public void FailedRefreshExposesNoSensitiveDecoyException()
+    {
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [CreateSnapshot(
+                ProviderKind.Codex,
+                quotaWindows: [QuotaWindow("codex:default:primary", "Weekly", 14m)])],
+            ApplicationRuntimeStatus.Running,
+            refreshStatus: FailedStatus());
+
+        var displayText = string.Join(
+            " ",
+            state.StatusText,
+            state.RefreshCommandState.Label,
+            state.RefreshCommandState.StatusText,
+            string.Join(" ", state.Providers.Select(provider => provider.FooterText)));
+
+        Assert.DoesNotContain("C:\\Users\\pixel", displayText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/mnt/c/Users/pixel", displayText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("secret", displayText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("stack", displayText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SuccessClearsPreviousFailureStateAndRestoresNormalButtonState()
+    {
+        var now = new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero);
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [],
+            ApplicationRuntimeStatus.Running,
+            new ManualTimeProvider(now),
+            SucceededStatus(now),
+            ManualRefreshCommandState.Available);
+
+        Assert.Equal(PopupApplicationDisplayState.Running, state.ApplicationState);
+        Assert.Equal("Updated just now", state.StatusText);
+        Assert.True(state.RefreshCommandState.IsEnabled);
+        Assert.Equal("Refresh now", state.RefreshCommandState.Label);
     }
 
     [Fact]
@@ -775,7 +851,8 @@ public sealed class TrayPopupDisplayStateAdapterTests
         IReadOnlyList<ProviderUsageSnapshot> snapshots,
         ApplicationRuntimeStatus? status = null,
         TimeProvider? timeProvider = null,
-        ProviderRefreshStatus? refreshStatus = null)
+        ProviderRefreshStatus? refreshStatus = null,
+        ManualRefreshCommandState? refreshCommandState = null)
     {
         timeProvider ??= new ManualTimeProvider();
         var store = new InMemoryProviderRuntimeSnapshotStore(timeProvider, TimeSpan.FromMinutes(5));
@@ -788,6 +865,10 @@ public sealed class TrayPopupDisplayStateAdapterTests
             settings,
             status ?? ApplicationRuntimeStatus.Running,
             refreshStatus ?? ProviderRefreshStatus.Initial,
+            refreshCommandState ?? (
+                refreshStatus?.IsRefreshActive == true
+                    ? ManualRefreshCommandState.Refreshing
+                    : ManualRefreshCommandState.Available),
             store);
     }
 

@@ -44,9 +44,25 @@ public sealed class TrayPopupDisplayStateAdapter
         ProviderRefreshStatus refreshStatus,
         IProviderRuntimeSnapshotStore snapshotStore)
     {
+        return Create(
+            settings,
+            status,
+            refreshStatus,
+            ManualRefreshCommandState.Available,
+            snapshotStore);
+    }
+
+    public TrayPopupDisplayState Create(
+        AppSettings settings,
+        ApplicationRuntimeStatus status,
+        ProviderRefreshStatus refreshStatus,
+        ManualRefreshCommandState refreshCommandState,
+        IProviderRuntimeSnapshotStore snapshotStore)
+    {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(status);
         ArgumentNullException.ThrowIfNull(refreshStatus);
+        ArgumentNullException.ThrowIfNull(refreshCommandState);
         ArgumentNullException.ThrowIfNull(snapshotStore);
 
         var snapshots = snapshotStore.GetCurrentSnapshots();
@@ -57,7 +73,8 @@ public sealed class TrayPopupDisplayStateAdapter
         return new TrayPopupDisplayState(
             MapApplicationState(status, refreshStatus),
             MapStatusText(status, refreshStatus),
-            providers);
+            providers,
+            refreshCommandState);
     }
 
     private ProviderCardDisplayState CreateProviderState(
