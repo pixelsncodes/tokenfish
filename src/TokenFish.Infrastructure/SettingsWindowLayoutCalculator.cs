@@ -3,7 +3,8 @@ namespace TokenFish.Infrastructure;
 public static class SettingsWindowLayoutCalculator
 {
     public const double WidthEffectivePixels = 520;
-    public const double MaximumClientHeightEffectivePixels = 560;
+    public const double MaximumClientHeightEffectivePixels = 720;
+    public const double WorkAreaMarginEffectivePixels = 24;
 
     public static int EffectiveToPhysicalPixels(double effectivePixels, double rasterizationScale)
     {
@@ -21,7 +22,8 @@ public static class SettingsWindowLayoutCalculator
         double measuredClientHeightEffectivePixels,
         double rasterizationScale,
         int nonClientWidthPhysicalPixels,
-        int nonClientHeightPhysicalPixels)
+        int nonClientHeightPhysicalPixels,
+        int? maximumWindowHeightPhysicalPixels = null)
     {
         ValidateScale(rasterizationScale);
 
@@ -40,9 +42,26 @@ public static class SettingsWindowLayoutCalculator
             throw new ArgumentOutOfRangeException(nameof(nonClientHeightPhysicalPixels));
         }
 
+        if (maximumWindowHeightPhysicalPixels <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumWindowHeightPhysicalPixels));
+        }
+
+        var measuredHeight = Math.Ceiling(measuredClientHeightEffectivePixels);
+        var maximumClientHeightEffectivePixels = MaximumClientHeightEffectivePixels;
+        if (maximumWindowHeightPhysicalPixels is { } maximumWindowHeight)
+        {
+            var maximumClientHeightPhysicalPixels = Math.Max(
+                1,
+                maximumWindowHeight - nonClientHeightPhysicalPixels);
+            maximumClientHeightEffectivePixels = Math.Min(
+                maximumClientHeightEffectivePixels,
+                Math.Floor(maximumClientHeightPhysicalPixels / rasterizationScale));
+        }
+
         var clientHeightEffectivePixels = Math.Min(
-            Math.Ceiling(measuredClientHeightEffectivePixels),
-            MaximumClientHeightEffectivePixels);
+            measuredHeight,
+            Math.Max(1, maximumClientHeightEffectivePixels));
         var clientWidthPhysicalPixels = EffectiveToPhysicalPixels(
             WidthEffectivePixels,
             rasterizationScale);
@@ -54,7 +73,8 @@ public static class SettingsWindowLayoutCalculator
             new SettingsWindowPhysicalSize(
                 clientWidthPhysicalPixels + nonClientWidthPhysicalPixels,
                 clientHeightPhysicalPixels + nonClientHeightPhysicalPixels),
-            clientHeightEffectivePixels);
+            clientHeightEffectivePixels,
+            clientHeightEffectivePixels < measuredHeight);
     }
 
     private static void ValidateScale(double rasterizationScale)
@@ -74,7 +94,8 @@ public readonly record struct SettingsWindowPhysicalSize(int Width, int Height);
 
 public readonly record struct SettingsWindowLayout(
     SettingsWindowPhysicalSize Size,
-    double ClientHeightEffectivePixels);
+    double ClientHeightEffectivePixels,
+    bool RequiresVerticalScroll);
 
 public static class SettingsWindowPositionCalculator
 {

@@ -53,6 +53,22 @@ internal static class SettingsWindowPlacementService
         return workArea.Contains(rectangle);
     }
 
+    public static RectInt32 GetTargetWorkArea(Window window, RectInt32? preferredAnchor)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+
+        var lastRectangle = GetReusableLastRectangle();
+        if (lastRectangle is not null)
+        {
+            return DisplayArea.GetFromRect(
+                    ToRectInt32(lastRectangle.Value),
+                    DisplayAreaFallback.Nearest)
+                .WorkArea;
+        }
+
+        return GetPreferredDisplayArea(preferredAnchor).WorkArea;
+    }
+
     public static void CaptureCurrentPosition(Window window)
     {
         ArgumentNullException.ThrowIfNull(window);
@@ -108,6 +124,26 @@ internal static class SettingsWindowPlacementService
 
         Move(window, placement.Rectangle);
         return true;
+    }
+
+    private static SettingsWindowPhysicalRect? GetReusableLastRectangle()
+    {
+        SettingsWindowPhysicalRect? lastRectangle;
+        lock (Sync)
+        {
+            lastRectangle = lastWindowRectangle;
+        }
+
+        if (lastRectangle is null)
+        {
+            return null;
+        }
+
+        var displayArea = DisplayArea.GetFromRect(
+            ToRectInt32(lastRectangle.Value),
+            DisplayAreaFallback.Nearest);
+        var workArea = ToWorkArea(displayArea.WorkArea, isPrimary: true);
+        return workArea.Contains(lastRectangle.Value) ? lastRectangle : null;
     }
 
     private static DisplayArea GetPreferredDisplayArea(RectInt32? preferredAnchor)

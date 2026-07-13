@@ -34,17 +34,25 @@ internal static class SettingsWindowSizing
 
     public static SizeInt32 ToOuterPhysicalSize(
         Window window,
-        double measuredClientHeightEffectivePixels)
+        double measuredClientHeightEffectivePixels,
+        RectInt32 targetWorkArea)
     {
         ArgumentNullException.ThrowIfNull(window);
 
         var scale = GetRasterizationScale(window);
         var nonClientSize = GetNonClientSize(window);
+        var safeMarginPhysicalPixels = EffectiveToPhysicalPixels(
+            SettingsWindowLayoutCalculator.WorkAreaMarginEffectivePixels,
+            scale);
+        var maximumWindowHeightPhysicalPixels = Math.Max(
+            1,
+            targetWorkArea.Height - (safeMarginPhysicalPixels * 2));
         var layout = SettingsWindowLayoutCalculator.Calculate(
             measuredClientHeightEffectivePixels,
             scale,
             nonClientSize.Width,
-            nonClientSize.Height);
+            nonClientSize.Height,
+            maximumWindowHeightPhysicalPixels);
 
         return new SizeInt32(layout.Size.Width, layout.Size.Height);
     }

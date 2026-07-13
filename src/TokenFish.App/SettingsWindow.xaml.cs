@@ -223,7 +223,14 @@ public sealed partial class SettingsWindow : Window
             double.PositiveInfinity));
 
         var measuredHeight = Math.Ceiling(RootGrid.DesiredSize.Height);
-        AppWindow.Resize(SettingsWindowSizing.ToOuterPhysicalSize(this, measuredHeight));
+        var preferredAnchor = _getPreferredPlacementAnchor();
+        var targetWorkArea = SettingsWindowPlacementService.GetTargetWorkArea(
+            this,
+            preferredAnchor);
+        AppWindow.Resize(SettingsWindowSizing.ToOuterPhysicalSize(
+            this,
+            measuredHeight,
+            targetWorkArea));
 
         if (!ensurePositioned)
         {
@@ -234,7 +241,7 @@ public sealed partial class SettingsWindow : Window
         {
             SettingsWindowPlacementService.EnsureVisibleOnMonitor(
                 this,
-                _getPreferredPlacementAnchor());
+                preferredAnchor);
             _isPositioned = true;
         }
     }
