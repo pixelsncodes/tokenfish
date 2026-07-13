@@ -80,4 +80,24 @@
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <ClaudeBridgeProjectPath>$(MSBuildThisFileDirectory)..\TokenFish.ClaudeBridge\TokenFish.ClaudeBridge.csproj</ClaudeBridgeProjectPath>
+    <ClaudeBridgePublishIntermediateDir>$(MSBuildProjectDirectory)\obj\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\claude-bridge-publish\</ClaudeBridgePublishIntermediateDir>
+    <ClaudeBridgePublishedExecutable>$(ClaudeBridgePublishIntermediateDir)TokenFish.ClaudeBridge.exe</ClaudeBridgePublishedExecutable>
+    <ClaudeBridgeAppRelativePath>tools\claude\TokenFish.ClaudeBridge.exe</ClaudeBridgeAppRelativePath>
+  </PropertyGroup>
+
+  <Target Name="PublishClaudeBridgeForApp"
+          AfterTargets="Publish"
+          Condition="'$(IsPublishable)' == 'true' and '$(RuntimeIdentifier)' == 'win-x64'">
+    <RemoveDir Directories="$(ClaudeBridgePublishIntermediateDir)" />
+    <MSBuild Projects="$(ClaudeBridgeProjectPath)"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);Platform=x64;RuntimeIdentifier=win-x64;PublishProfile=win-x64;PublishDir=$(ClaudeBridgePublishIntermediateDir)" />
+    <MakeDir Directories="$(PublishDir)tools\claude" />
+    <Copy SourceFiles="$(ClaudeBridgePublishedExecutable)"
+          DestinationFiles="$(PublishDir)$(ClaudeBridgeAppRelativePath)"
+          OverwriteReadOnlyFiles="true" />
+  </Target>
 </Project>
