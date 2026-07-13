@@ -1,6 +1,6 @@
 # Threat Model
 
-This model covers the initial public scaffold and the expected boundaries for future local provider integrations.
+This model covers the current local MVP and its local Codex and Claude provider integrations.
 
 ## Risks and Mitigations
 

@@ -1,13 +1,14 @@
 # Privacy and Security Architecture
 
-TokenFish is designed as a local-first desktop application. The app should work from local provider state and local user preferences without depending on a remote TokenFish backend.
+TokenFish is a local-first desktop application. It works from local provider state and local user preferences without a TokenFish backend.
 
 ## Data Boundaries
 
-- TokenFish has no telemetry by default.
-- TokenFish has no remote TokenFish backend.
-- TokenFish must not store API keys, cookies, access tokens, prompts, responses, source code, terminal history, account email, usernames, or workspace paths.
-- Only normalized usage metrics may be persisted.
+- TokenFish has no telemetry or analytics.
+- TokenFish has no remote backend, network listener, local HTTP service, or cloud storage.
+- TokenFish does not collect or store API keys, credentials, cookies, or access tokens.
+- TokenFish does not capture prompts, responses, conversation history, source code, terminal history, workspace data, or browser data.
+- Only normalized allowlisted usage metrics may be persisted.
 - Test fixtures must be synthetic and sanitized.
 
 ## Provider Communication
@@ -16,9 +17,7 @@ Codex communication must go through the locally installed Codex App Server over 
 
 Claude communication must go through an allowlisted local status-line data bridge. TokenFish must accept only the documented bridge payload shape and must treat malformed or unexpected data as untrusted input.
 
-The Claude status-line bridge persists only normalized five-hour and seven-day quota observations under `%LOCALAPPDATA%\TokenFish\bridge\claude-status-v1.json`. TokenFish does not edit Claude Code settings and does not read Claude transcripts, prompts, workspaces, cookies, credentials, terminal history, repository identity, model names, costs, or account identifiers.
-
-Provider integrations are intentionally outside the initial scaffold. Future provider code must preserve these data boundaries.
+The Claude status-line bridge persists only normalized five-hour and seven-day quota observations under `%LOCALAPPDATA%\TokenFish\bridge\claude-status-v1.json`. TokenFish does not persist raw Claude status-line JSON, edit Claude Code settings, inspect Claude authentication, or read Claude transcripts, prompts, workspaces, cookies, credentials, terminal history, repository identity, model names, costs, or account identifiers.
 
 ## Logging and Diagnostics
 
@@ -34,6 +33,6 @@ Diagnostic output must prefer coarse state, counts, and normalized usage metrics
 
 ## Local Runtime
 
-TokenFish must not expose a public network port. Any local IPC or process bridge must be private to the current user session and must validate inputs before parsing or dispatch.
+TokenFish does not expose a public network port. Codex communication uses redirected standard input/output with the local Codex App Server; Claude receives status-line input through the local bridge executable.
 
-Normal use must not require administrator privileges. Installation or update flows that need elevated privileges must be explicit and separate from normal runtime behavior.
+Normal use requires no administrator privileges. TokenFish does not automatically modify Claude Code configuration.

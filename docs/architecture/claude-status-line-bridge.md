@@ -19,15 +19,15 @@ Claude Code's documented status-line contract uses a `statusLine` settings objec
 }
 ```
 
-Use that Windows snippet only when Claude Code runs natively on Windows. Users add or merge the `statusLine` object into their Claude Code user settings manually, preserving unrelated settings.
+Use that Windows snippet only when Claude Code runs natively on Windows. Settings generates the actual `statusLine` object using the resolved published App path; users add or merge only that object into their Claude Code user settings, preserving unrelated settings. After Claude Code emits a normal status-line update, TokenFish reads the normalized local bridge state when it refreshes.
 
-When Claude Code runs inside WSL, its settings file is normally `~/.claude/settings.json`. The bridge remains a Windows executable, so Settings converts an absolute drive path by lowercasing the drive letter and replacing backslashes with forward slashes. For example, `C:\Users\Name\TokenFish\tools\claude\TokenFish.ClaudeBridge.exe` becomes `/mnt/c/Users/Name/TokenFish/tools/claude/TokenFish.ClaudeBridge.exe`. A WSL UNC path is distribution-local instead: `\\wsl.localhost\Ubuntu\tmp\TokenFish\tools\claude\TokenFish.ClaudeBridge.exe` becomes `/tmp/TokenFish/tools/claude/TokenFish.ClaudeBridge.exe`. The WSL command directly invokes that quoted path and does not use PowerShell:
+When Claude Code runs inside WSL, its settings file is normally `~/.claude/settings.json`. The bridge remains a Windows executable, so Settings generates a WSL-specific command. It converts an absolute drive path by lowercasing the drive letter and replacing backslashes with forward slashes. For example, `C:\Published\TokenFish\tools\claude\TokenFish.ClaudeBridge.exe` becomes `/mnt/c/Published/TokenFish/tools/claude/TokenFish.ClaudeBridge.exe`. A WSL UNC path is distribution-local instead: `\\wsl.localhost\Distro\tmp\TokenFish\tools\claude\TokenFish.ClaudeBridge.exe` becomes `/tmp/TokenFish/tools/claude/TokenFish.ClaudeBridge.exe`. The WSL command directly invokes that quoted path and does not use PowerShell:
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "\"/mnt/c/Users/Name/TokenFish/tools/claude/TokenFish.ClaudeBridge.exe\""
+    "command": "\"/mnt/c/Published/TokenFish/tools/claude/TokenFish.ClaudeBridge.exe\""
   }
 }
 ```

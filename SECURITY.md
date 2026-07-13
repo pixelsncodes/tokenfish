@@ -22,9 +22,10 @@ The maintainers will acknowledge private reports, investigate the impact, and co
 ## Security Principles
 
 - TokenFish is local-first and should not require a remote TokenFish backend for normal operation.
-- TokenFish does not collect telemetry by default.
-- TokenFish must not persist API keys, cookies, access tokens, prompts, responses, source code, terminal history, account email, usernames, or workspace paths.
+- TokenFish does not collect telemetry or analytics.
+- TokenFish does not persist API keys, credentials, cookies, access tokens, raw Claude status-line JSON, prompts, responses, conversation history, source code, terminal history, account email, usernames, workspace paths, or browser data.
 - Provider integrations must accept only the minimum local data needed to compute normalized usage metrics.
 - Logs and diagnostics must redact usernames, home directories, credentials, command arguments, and raw provider payloads.
 - Test fixtures must be synthetic and sanitized.
 - Normal use must not require administrator privileges.
+- TokenFish does not automatically edit Claude Code settings or inspect Claude authentication.
