@@ -12,7 +12,8 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
     private const uint IconId = 1;
     private const uint CallbackMessage = NativeMethods.WmApp + 0x0546;
     private const uint RefreshCommandId = 1001;
-    private const uint ExitCommandId = 1002;
+    private const uint SettingsCommandId = 1002;
+    private const uint ExitCommandId = 1003;
     private const string Tooltip = "TokenFish";
 
     private readonly nint _windowHandle;
@@ -309,6 +310,7 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
         try
         {
             if (!NativeMethods.AppendMenu(menuHandle, NativeMethods.MfString, RefreshCommandId, "Refresh") ||
+                !NativeMethods.AppendMenu(menuHandle, NativeMethods.MfString, SettingsCommandId, "Settings...") ||
                 !NativeMethods.AppendMenu(menuHandle, NativeMethods.MfSeparator, 0, null) ||
                 !NativeMethods.AppendMenu(menuHandle, NativeMethods.MfString, ExitCommandId, "Exit"))
             {
@@ -332,6 +334,10 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
             if (command == RefreshCommandId)
             {
                 DispatchCommand(NotificationAreaCommand.Refresh);
+            }
+            else if (command == SettingsCommandId)
+            {
+                DispatchCommand(NotificationAreaCommand.Settings);
             }
             else if (command == ExitCommandId)
             {

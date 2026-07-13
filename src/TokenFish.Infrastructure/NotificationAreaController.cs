@@ -5,6 +5,7 @@ public sealed class NotificationAreaController : IDisposable
     private readonly INotificationAreaIcon _icon;
     private readonly IApplicationRuntimeHost _runtimeHost;
     private readonly Func<Task> _toggleWindowAsync;
+    private readonly Func<Task> _openSettingsAsync;
     private readonly Func<Task> _exitAsync;
     private readonly object _sync = new();
 
@@ -17,16 +18,19 @@ public sealed class NotificationAreaController : IDisposable
         INotificationAreaIcon icon,
         IApplicationRuntimeHost runtimeHost,
         Func<Task> toggleWindowAsync,
+        Func<Task> openSettingsAsync,
         Func<Task> exitAsync)
     {
         ArgumentNullException.ThrowIfNull(icon);
         ArgumentNullException.ThrowIfNull(runtimeHost);
         ArgumentNullException.ThrowIfNull(toggleWindowAsync);
+        ArgumentNullException.ThrowIfNull(openSettingsAsync);
         ArgumentNullException.ThrowIfNull(exitAsync);
 
         _icon = icon;
         _runtimeHost = runtimeHost;
         _toggleWindowAsync = toggleWindowAsync;
+        _openSettingsAsync = openSettingsAsync;
         _exitAsync = exitAsync;
 
         _icon.CommandRequested += OnCommandRequested;
@@ -102,6 +106,14 @@ public sealed class NotificationAreaController : IDisposable
                     break;
                 case NotificationAreaCommand.Refresh:
                     await RefreshAsync().ConfigureAwait(false);
+                    break;
+                case NotificationAreaCommand.Settings:
+                    if (CommandsAreClosed())
+                    {
+                        return;
+                    }
+
+                    await _openSettingsAsync().ConfigureAwait(false);
                     break;
                 case NotificationAreaCommand.Exit:
                     await ExitAsync().ConfigureAwait(false);

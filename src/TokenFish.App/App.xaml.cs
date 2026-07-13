@@ -12,9 +12,11 @@ public partial class App : Application
     private readonly ApplicationInstanceStartupCoordinator _startupCoordinator;
     private Window? _window;
     private MainWindow? _popupWindow;
+    private readonly LocalAppSettingsStore _settingsStore;
     private readonly TokenFishApplicationRuntimeHost _runtimeHost;
     private NotificationAreaController? _notificationAreaController;
     private TrayPopupController? _popupController;
+    private SettingsWindowCoordinator? _settingsWindowCoordinator;
     private ApplicationRelaunchActivationController? _relaunchActivationController;
     private ApplicationShutdownCoordinator? _shutdownCoordinator;
     private readonly TrayPopupDisplayStateAdapter _displayStateAdapter = new();
@@ -33,8 +35,9 @@ public partial class App : Application
 
         _startupCoordinator = startupCoordinator;
         InitializeComponent();
+        _settingsStore = new LocalAppSettingsStore();
         _runtimeHost = new TokenFishApplicationRuntimeHost(
-            new LocalAppSettingsStore(),
+            _settingsStore,
             GetClientVersion());
     }
 
@@ -49,6 +52,7 @@ public partial class App : Application
         var popupShell = new MainWindowPopupShell(_popupWindow, icon);
         var popupTimer = new DispatcherPopupUpdateTimer(_window.DispatcherQueue);
         var popupActionQueue = new DispatcherPopupActionQueue(_window.DispatcherQueue);
+        _settingsWindowCoordinator = new SettingsWindowCoordinator(CreateSettingsWindowShell);
         _popupController = new TrayPopupController(
             popupShell,
             popupTimer,
@@ -58,6 +62,7 @@ public partial class App : Application
             icon,
             _runtimeHost,
             () => _popupController?.ToggleAsync(CancellationToken.None) ?? Task.CompletedTask,
+            OpenSettingsAsync,
             ExitAsync);
         _notificationAreaController.Initialize();
         _relaunchActivationController = new ApplicationRelaunchActivationController(
@@ -110,6 +115,19 @@ public partial class App : Application
         return Task.CompletedTask;
     }
 
+    private Task OpenSettingsAsync()
+    {
+        _settingsWindowCoordinator?.Open();
+        return Task.CompletedTask;
+    }
+
+    private ISettingsWindowShell CreateSettingsWindowShell()
+    {
+        var editor = new CodexRuntimeSettingsEditor(_settingsStore);
+        var presenter = new CodexRuntimeSettingsPresenter(editor);
+        return new SettingsWindowShell(new SettingsWindow(presenter));
+    }
+
     private void OnRuntimeStatusChanged(ApplicationRuntimeStatus status)
     {
         _ = status;
@@ -133,6 +151,7 @@ public partial class App : Application
     {
         if (_window is null)
         {
+            _settingsWindowCoordinator?.Shutdown();
             await _runtimeHost.StopAsync(cancellationToken);
             _relaunchActivationController?.Dispose();
             _popupController?.Dispose();
@@ -142,6 +161,7 @@ public partial class App : Application
 
         _exitRequested = true;
         _relaunchActivationController?.BeginShutdown();
+        _settingsWindowCoordinator?.Shutdown();
         _window.AppWindow.Hide();
 
         await _runtimeHost.StopAsync(cancellationToken);

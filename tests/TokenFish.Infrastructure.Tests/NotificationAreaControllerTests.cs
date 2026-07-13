@@ -79,6 +79,31 @@ public sealed class NotificationAreaControllerTests
     }
 
     [Fact]
+    public async Task SettingsDispatchesOpenWithoutRefreshingRuntime()
+    {
+        var settingsOpenCount = 0;
+        var settingsSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new RecordingRuntimeHost();
+        var icon = new RecordingNotificationAreaIcon();
+        using var controller = CreateController(
+            icon: icon,
+            host: host,
+            openSettingsAsync: () =>
+            {
+                settingsOpenCount++;
+                settingsSignal.SetResult();
+                return Task.CompletedTask;
+            });
+        controller.Initialize();
+
+        icon.RaiseCommand(NotificationAreaCommand.Settings);
+        await settingsSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(1, settingsOpenCount);
+        Assert.Equal(0, host.RefreshCallCount);
+    }
+
+    [Fact]
     public async Task ExitDispatchesOneShutdownRequest()
     {
         var exitCount = 0;
@@ -160,11 +185,13 @@ public sealed class NotificationAreaControllerTests
         RecordingNotificationAreaIcon? icon = null,
         RecordingRuntimeHost? host = null,
         Func<Task>? toggleWindowAsync = null,
+        Func<Task>? openSettingsAsync = null,
         Func<Task>? exitAsync = null) =>
         new(
             icon ?? new RecordingNotificationAreaIcon(),
             host ?? new RecordingRuntimeHost(),
             toggleWindowAsync ?? (() => Task.CompletedTask),
+            openSettingsAsync ?? (() => Task.CompletedTask),
             exitAsync ?? (() => Task.CompletedTask));
 
     private sealed class RecordingNotificationAreaIcon : INotificationAreaIcon
