@@ -192,8 +192,146 @@ public sealed class TrayPopupDisplayStateAdapterTests
             ApplicationRuntimeStatus.RefreshFaulted);
 
         Assert.Equal(PopupApplicationDisplayState.RefreshIssue, state.ApplicationState);
-        Assert.Equal("TokenFish could not refresh usage", state.StatusText);
+        Assert.Equal("Update failed", state.StatusText);
         Assert.DoesNotContain("exception", state.StatusText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void NeverRefreshedRunningStateShowsWaitingStatus()
+    {
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [],
+            ApplicationRuntimeStatus.Running,
+            refreshStatus: ProviderRefreshStatus.Initial);
+
+        Assert.Equal(PopupApplicationDisplayState.Running, state.ApplicationState);
+        Assert.Equal("Waiting for first update", state.StatusText);
+    }
+
+    [Fact]
+    public void ActiveRefreshWithNoPriorValuesShowsUpdatingAndWaitingProvider()
+    {
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [],
+            ApplicationRuntimeStatus.Running,
+            refreshStatus: RefreshingStatus());
+        var provider = Assert.Single(state.Providers);
+
+        Assert.Equal(PopupApplicationDisplayState.Refreshing, state.ApplicationState);
+        Assert.Equal("Updating…", state.StatusText);
+        Assert.Equal("Waiting for first refresh", provider.ConnectionState);
+        Assert.Empty(provider.QuotaWindows);
+        Assert.Empty(provider.ActivityRows);
+    }
+
+    [Fact]
+    public void ActiveRefreshKeepsPriorValidValuesVisible()
+    {
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [CreateSnapshot(
+                ProviderKind.Codex,
+                quotaWindows: [QuotaWindow("codex:default:primary", "Weekly", 14m)],
+                activityMetrics: [ActivityMetric(100)])],
+            ApplicationRuntimeStatus.Running,
+            refreshStatus: RefreshingStatus());
+        var provider = Assert.Single(state.Providers);
+
+        Assert.Equal("Updating…", state.StatusText);
+        Assert.Equal("14% used", Assert.Single(provider.QuotaWindows).PercentageText);
+        Assert.Equal("100", Assert.Single(provider.ActivityRows).ValueText);
+    }
+
+    [Fact]
+    public void SuccessfulRefreshShowsLastUpdatedFromRefreshStatus()
+    {
+        var now = new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero);
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [],
+            ApplicationRuntimeStatus.Running,
+            new ManualTimeProvider(now),
+            SucceededStatus(now));
+
+        Assert.Equal(PopupApplicationDisplayState.Running, state.ApplicationState);
+        Assert.Equal("Updated just now", state.StatusText);
+    }
+
+    [Fact]
+    public void SuccessfulRefreshUsesLocalDisplayTimeForOlderSuccess()
+    {
+        var now = new DateTimeOffset(2026, 7, 14, 8, 0, 0, TimeSpan.Zero);
+        var succeededAt = new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero);
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [],
+            ApplicationRuntimeStatus.Running,
+            new ManualTimeProvider(now),
+            SucceededStatus(succeededAt));
+
+        Assert.Equal("Updated 7/12/2026 1:00 AM", state.StatusText);
+    }
+
+    [Fact]
+    public void FailedRefreshRetainsPriorValidValuesAndUsesSafeStatus()
+    {
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [CreateSnapshot(
+                ProviderKind.Codex,
+                quotaWindows: [QuotaWindow("codex:default:primary", "Weekly", 14m)])],
+            ApplicationRuntimeStatus.Running,
+            refreshStatus: FailedStatus());
+        var provider = Assert.Single(state.Providers);
+
+        Assert.Equal(PopupApplicationDisplayState.RefreshIssue, state.ApplicationState);
+        Assert.Equal("Update failed", state.StatusText);
+        Assert.Equal("14% used", Assert.Single(provider.QuotaWindows).PercentageText);
+        Assert.DoesNotContain("C:\\Users", state.StatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("exception", state.StatusText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void FailedFirstRefreshWithUnavailableMetricsDoesNotFabricateValues()
+    {
+        var capturedAt = new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero);
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [CreateSnapshot(
+                ProviderKind.Codex,
+                connectionState: ProviderConnectionState.Disconnected,
+                quotaWindows:
+                [
+                    NormalizedQuotaWindow.Unavailable(
+                        ProviderKind.Codex,
+                        "codex:default:primary",
+                        capturedAt,
+                        DataAuthority.LocalProviderReported,
+                        DataFreshness.Unknown,
+                        "account/rateLimits/read")
+                ],
+                activityMetrics:
+                [
+                    NormalizedActivityMetric.Unavailable(
+                        ProviderKind.Codex,
+                        "codex:activity:latest-seven-utc-dates:tokens",
+                        UsageActivityUnit.Tokens,
+                        capturedAt,
+                        DataAuthority.TokenFishDerived,
+                        DataFreshness.Unknown,
+                        "account/usage/read")
+                ])],
+            ApplicationRuntimeStatus.Running,
+            refreshStatus: FailedStatus());
+        var provider = Assert.Single(state.Providers);
+
+        Assert.Equal("Update failed", state.StatusText);
+        Assert.Equal("Disconnected", provider.ConnectionState);
+        Assert.Empty(provider.QuotaWindows);
+        Assert.Empty(provider.ActivityRows);
+        Assert.Null(provider.EmptyUsageMessage);
     }
 
     [Fact]
@@ -590,7 +728,8 @@ public sealed class TrayPopupDisplayStateAdapterTests
         AppSettings settings,
         IReadOnlyList<ProviderUsageSnapshot> snapshots,
         ApplicationRuntimeStatus? status = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ProviderRefreshStatus? refreshStatus = null)
     {
         timeProvider ??= new ManualTimeProvider();
         var store = new InMemoryProviderRuntimeSnapshotStore(timeProvider, TimeSpan.FromMinutes(5));
@@ -602,8 +741,33 @@ public sealed class TrayPopupDisplayStateAdapterTests
         return new TrayPopupDisplayStateAdapter(timeProvider, TestCulture, TestTimeZone).Create(
             settings,
             status ?? ApplicationRuntimeStatus.Running,
+            refreshStatus ?? ProviderRefreshStatus.Initial,
             store);
     }
+
+    private static ProviderRefreshStatus RefreshingStatus() =>
+        new(
+            IsRefreshActive: true,
+            LatestAttemptedAtUtc: new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
+            LatestSucceededAtUtc: null,
+            ProviderRefreshOutcome.Refreshing,
+            Version: 1);
+
+    private static ProviderRefreshStatus SucceededStatus(DateTimeOffset succeededAt) =>
+        new(
+            IsRefreshActive: false,
+            LatestAttemptedAtUtc: succeededAt,
+            LatestSucceededAtUtc: succeededAt,
+            ProviderRefreshOutcome.Succeeded,
+            Version: 2);
+
+    private static ProviderRefreshStatus FailedStatus() =>
+        new(
+            IsRefreshActive: false,
+            LatestAttemptedAtUtc: new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
+            LatestSucceededAtUtc: null,
+            ProviderRefreshOutcome.Failed,
+            Version: 2);
 
     private static ProviderUsageSnapshot CreateSnapshot(
         ProviderKind provider,

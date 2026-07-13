@@ -73,6 +73,7 @@ public partial class App : Application
             _runtimeHost.ReportShellFault);
         _relaunchActivationController.Initialize();
         _runtimeHost.StatusChanged += OnRuntimeStatusChanged;
+        _runtimeHost.RefreshStatusChanged += OnRefreshStatusChanged;
         _shutdownCoordinator = new ApplicationShutdownCoordinator(
             CleanupForExitAsync,
             CompleteApplicationShutdown,
@@ -109,7 +110,11 @@ public partial class App : Application
         cancellationToken.ThrowIfCancellationRequested();
         var settings = _runtimeHost.CurrentSettings ?? new AppSettings();
         var snapshotStore = _runtimeHost.Services?.ProviderRuntimeSnapshotStore ?? _emptySnapshotStore;
-        var state = _displayStateAdapter.Create(settings, _runtimeHost.Status, snapshotStore);
+        var state = _displayStateAdapter.Create(
+            settings,
+            _runtimeHost.Status,
+            _runtimeHost.RefreshStatus,
+            snapshotStore);
         _popupWindow.UpdateState(state);
 
         return Task.CompletedTask;
@@ -129,6 +134,15 @@ public partial class App : Application
     }
 
     private void OnRuntimeStatusChanged(ApplicationRuntimeStatus status)
+    {
+        _ = status;
+        _window?.DispatcherQueue.TryEnqueue(() =>
+        {
+            _ = RefreshPopupStateAsync(CancellationToken.None);
+        });
+    }
+
+    private void OnRefreshStatusChanged(ProviderRefreshStatus status)
     {
         _ = status;
         _window?.DispatcherQueue.TryEnqueue(() =>

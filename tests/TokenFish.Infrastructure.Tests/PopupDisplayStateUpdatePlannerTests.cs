@@ -44,6 +44,19 @@ public sealed class PopupDisplayStateUpdatePlannerTests
     }
 
     [Fact]
+    public void TimerOnlyRefreshHealthUpdateDoesNotRebuildProviderCardsOrReassignProgress()
+    {
+        var planner = new PopupDisplayStateUpdatePlanner();
+        _ = planner.Plan(CreateState(statusText: "Updated just now"));
+
+        var plan = planner.Plan(CreateState(statusText: "Updated 1 min ago"));
+
+        Assert.False(plan.RebuildProviderCards);
+        Assert.True(plan.AffectsLayout);
+        Assert.Empty(plan.ProgressValueUpdates);
+    }
+
+    [Fact]
     public void ChangedUsagePercentageUpdatesExistingProgressControl()
     {
         var planner = new PopupDisplayStateUpdatePlanner();
@@ -108,11 +121,12 @@ public sealed class PopupDisplayStateUpdatePlannerTests
     private static TrayPopupDisplayState CreateState(
         decimal progressValue = 29m,
         string footerText = "Updated just now · Reported by Codex",
+        string statusText = "Running",
         IReadOnlyList<PopupQuotaWindowDisplayState>? quotaWindows = null,
         IReadOnlyList<PopupActivityDisplayState>? activityRows = null) =>
         new(
             PopupApplicationDisplayState.Running,
-            "Running",
+            statusText,
             [
                 new ProviderCardDisplayState(
                     ProviderKind.Codex,

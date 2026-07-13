@@ -31,8 +31,22 @@ public sealed class TrayPopupDisplayStateAdapter
         ApplicationRuntimeStatus status,
         IProviderRuntimeSnapshotStore snapshotStore)
     {
+        return Create(
+            settings,
+            status,
+            ProviderRefreshStatus.Initial,
+            snapshotStore);
+    }
+
+    public TrayPopupDisplayState Create(
+        AppSettings settings,
+        ApplicationRuntimeStatus status,
+        ProviderRefreshStatus refreshStatus,
+        IProviderRuntimeSnapshotStore snapshotStore)
+    {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(status);
+        ArgumentNullException.ThrowIfNull(refreshStatus);
         ArgumentNullException.ThrowIfNull(snapshotStore);
 
         var snapshots = snapshotStore.GetCurrentSnapshots();
@@ -41,8 +55,8 @@ public sealed class TrayPopupDisplayStateAdapter
             .ToArray();
 
         return new TrayPopupDisplayState(
-            MapApplicationState(status),
-            MapStatusText(status),
+            MapApplicationState(status, refreshStatus),
+            MapStatusText(status, refreshStatus),
             providers);
     }
 
@@ -341,43 +355,100 @@ public sealed class TrayPopupDisplayStateAdapter
         value.ToString("0.#", CultureInfo.InvariantCulture);
 
     private static PopupApplicationDisplayState MapApplicationState(
-        ApplicationRuntimeStatus status) =>
-        status.State switch
+        ApplicationRuntimeStatus status,
+        ProviderRefreshStatus refreshStatus)
+    {
+        if (status.State is ApplicationRuntimeState.Stopping or ApplicationRuntimeState.Stopped)
+        {
+            return status.State == ApplicationRuntimeState.Stopping
+                ? PopupApplicationDisplayState.Stopping
+                : PopupApplicationDisplayState.Stopped;
+        }
+
+        if (status.State == ApplicationRuntimeState.Faulted &&
+            status.Issue != ApplicationRuntimeIssue.RefreshFailed)
+        {
+            return status.Issue switch
+            {
+                ApplicationRuntimeIssue.StartupFailed => PopupApplicationDisplayState.StartupIssue,
+                ApplicationRuntimeIssue.ShutdownFailed => PopupApplicationDisplayState.ShutdownIssue,
+                ApplicationRuntimeIssue.ShellFailed => PopupApplicationDisplayState.ShellIssue,
+                _ => PopupApplicationDisplayState.RefreshIssue
+            };
+        }
+
+        if (refreshStatus.IsRefreshActive)
+        {
+            return PopupApplicationDisplayState.Refreshing;
+        }
+
+        if (refreshStatus.Outcome == ProviderRefreshOutcome.Failed ||
+            status.Issue == ApplicationRuntimeIssue.RefreshFailed)
+        {
+            return PopupApplicationDisplayState.RefreshIssue;
+        }
+
+        return status.State switch
         {
             ApplicationRuntimeState.Starting => PopupApplicationDisplayState.Starting,
             ApplicationRuntimeState.Running => PopupApplicationDisplayState.Running,
             ApplicationRuntimeState.Refreshing => PopupApplicationDisplayState.Refreshing,
-            ApplicationRuntimeState.Stopping => PopupApplicationDisplayState.Stopping,
-            ApplicationRuntimeState.Stopped => PopupApplicationDisplayState.Stopped,
-            ApplicationRuntimeState.Faulted => status.Issue switch
-            {
-                ApplicationRuntimeIssue.StartupFailed => PopupApplicationDisplayState.StartupIssue,
-                ApplicationRuntimeIssue.RefreshFailed => PopupApplicationDisplayState.RefreshIssue,
-                ApplicationRuntimeIssue.ShutdownFailed => PopupApplicationDisplayState.ShutdownIssue,
-                ApplicationRuntimeIssue.ShellFailed => PopupApplicationDisplayState.ShellIssue,
-                _ => PopupApplicationDisplayState.RefreshIssue
-            },
             _ => PopupApplicationDisplayState.Stopped
         };
+    }
 
-    private static string MapStatusText(ApplicationRuntimeStatus status) =>
-        status.State switch
+    private string MapStatusText(
+        ApplicationRuntimeStatus status,
+        ProviderRefreshStatus refreshStatus)
+    {
+        if (status.State is ApplicationRuntimeState.Stopping or ApplicationRuntimeState.Stopped)
+        {
+            return status.State == ApplicationRuntimeState.Stopping ? "Stopping" : "Stopped";
+        }
+
+        if (status.State == ApplicationRuntimeState.Faulted &&
+            status.Issue != ApplicationRuntimeIssue.RefreshFailed)
+        {
+            return status.Issue switch
+            {
+                ApplicationRuntimeIssue.StartupFailed => "TokenFish could not start",
+                ApplicationRuntimeIssue.ShutdownFailed => "TokenFish could not shut down cleanly",
+                ApplicationRuntimeIssue.ShellFailed => "TokenFish shell integration needs attention",
+                _ => "TokenFish needs attention"
+            };
+        }
+
+        if (refreshStatus.IsRefreshActive)
+        {
+            return "Updating…";
+        }
+
+        if (refreshStatus.Outcome == ProviderRefreshOutcome.Failed ||
+            status.Issue == ApplicationRuntimeIssue.RefreshFailed)
+        {
+            return "Update failed";
+        }
+
+        if (refreshStatus.LatestSucceededAtUtc.HasValue)
+        {
+            return FormatUpdatedText(refreshStatus.LatestSucceededAtUtc.Value);
+        }
+
+        if (refreshStatus.Outcome == ProviderRefreshOutcome.NeverRefreshed &&
+            status.State == ApplicationRuntimeState.Running)
+        {
+            return "Waiting for first update";
+        }
+
+        return status.State switch
         {
             ApplicationRuntimeState.Starting => "Starting TokenFish",
             ApplicationRuntimeState.Running => "Running",
             ApplicationRuntimeState.Refreshing => "Refreshing",
-            ApplicationRuntimeState.Stopping => "Stopping",
             ApplicationRuntimeState.Stopped => "Stopped",
-            ApplicationRuntimeState.Faulted => status.Issue switch
-            {
-                ApplicationRuntimeIssue.StartupFailed => "TokenFish could not start",
-                ApplicationRuntimeIssue.RefreshFailed => "TokenFish could not refresh usage",
-                ApplicationRuntimeIssue.ShutdownFailed => "TokenFish could not shut down cleanly",
-                ApplicationRuntimeIssue.ShellFailed => "TokenFish shell integration needs attention",
-                _ => "TokenFish needs attention"
-            },
             _ => "Unavailable"
         };
+    }
 
     private static string GetProviderName(ProviderKind provider) =>
         provider switch
