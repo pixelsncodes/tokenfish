@@ -90,7 +90,12 @@ public sealed class CodexRuntimeSettingsEditor
             return CodexRuntimeSettingsSaveResult.PersistenceFailed;
         }
 
-        return CodexRuntimeSettingsSaveResult.Saved(providerChanged, runtimeChanged);
+        return CodexRuntimeSettingsSaveResult.Saved(
+            providerChanged,
+            runtimeChanged,
+            normalizedSettings.ProviderSelectionMode,
+            normalizedSettings.CodexRuntimeMode,
+            normalizedSettings.CodexWslDistributionName);
     }
 }
 
@@ -103,16 +108,25 @@ public sealed record CodexRuntimeSettingsSaveResult(
     CodexRuntimeSettingsSaveStatus Status,
     string Message,
     bool ProviderChanged = false,
-    bool RuntimeChanged = false)
+    bool RuntimeChanged = false,
+    ProviderSelectionMode? SavedProviderSelectionMode = null,
+    CodexRuntimeMode? SavedRuntimeMode = null,
+    string? SavedWslDistributionName = null)
 {
     public static CodexRuntimeSettingsSaveResult Saved(
         bool providerChanged,
-        bool runtimeChanged) =>
+        bool runtimeChanged,
+        ProviderSelectionMode savedProviderSelectionMode,
+        CodexRuntimeMode savedRuntimeMode,
+        string? savedWslDistributionName) =>
         new(
             CodexRuntimeSettingsSaveStatus.Saved,
             "Settings saved.",
             providerChanged,
-            runtimeChanged);
+            runtimeChanged,
+            savedProviderSelectionMode,
+            savedRuntimeMode,
+            savedWslDistributionName);
 
     public static CodexRuntimeSettingsSaveResult Unchanged { get; } =
         new(CodexRuntimeSettingsSaveStatus.Unchanged, "Settings are already up to date.");

@@ -92,7 +92,7 @@ public sealed class CodexRuntimeSettingsPresenterTests
     }
 
     [Fact]
-    public async Task EditableProviderSelectionUpdatesReadinessRowsWithoutPersisting()
+    public async Task EditableProviderSelectionDoesNotChangeCurrentReadinessRows()
     {
         var readinessProvider = new RecordingReadinessProvider();
         var store = new RecordingSettingsStore(new AppSettings());
@@ -101,18 +101,23 @@ public sealed class CodexRuntimeSettingsPresenterTests
 
         var state = presenter.SelectProviderSelectionMode(ProviderSelectionMode.ClaudeOnly);
 
-        Assert.Equal([ProviderKind.Claude], state.ReadinessRows.Select(row => row.Provider));
+        Assert.Equal([ProviderKind.Codex], state.ReadinessRows.Select(row => row.Provider));
         Assert.Equal(0, store.SaveCallCount);
         Assert.Equal(3, readinessProvider.CallCount);
     }
 
     [Fact]
-    public async Task CombinedModeShowsBothReadinessRows()
+    public async Task RunningCombinedModeShowsBothReadinessRows()
     {
-        var presenter = CreatePresenter(new AppSettings());
+        var presenter = CreatePresenter(
+            new RecordingSettingsStore(new AppSettings()),
+            runningSettings: new AppSettings
+            {
+                ProviderSelectionMode = ProviderSelectionMode.Both
+            });
         await presenter.LoadAsync(CancellationToken.None);
 
-        var state = presenter.SelectProviderSelectionMode(ProviderSelectionMode.Both);
+        var state = presenter.SelectProviderSelectionMode(ProviderSelectionMode.ClaudeOnly);
 
         Assert.Equal([ProviderKind.Codex, ProviderKind.Claude], state.ReadinessRows.Select(row => row.Provider));
     }
@@ -203,7 +208,11 @@ public sealed class CodexRuntimeSettingsPresenterTests
 
         Assert.Equal(CodexRuntimeSettingsStatusKind.Success, state.StatusKind);
         Assert.True(state.IsStatusVisible);
-        Assert.Equal("Runtime changes take effect after TokenFish restarts.", state.StatusMessage);
+        Assert.Equal("Settings saved.", state.StatusMessage);
+        Assert.True(state.IsPendingRestartVisible);
+        Assert.Equal(
+            "Saved. TokenFish is still using Codex.\nRestart TokenFish to use the saved runtime settings.",
+            state.PendingRestartMessage);
         Assert.Equal(CodexRuntimeMode.WslLoginShell, store.SavedSettings!.CodexRuntimeMode);
         Assert.Equal("Ubuntu", store.SavedSettings.CodexWslDistributionName);
     }
@@ -218,7 +227,15 @@ public sealed class CodexRuntimeSettingsPresenterTests
         var state = await presenter.SaveAsync(CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsStatusKind.Success, state.StatusKind);
-        Assert.Equal("Provider changes take effect after TokenFish restarts.", state.StatusMessage);
+        Assert.Equal("Settings saved.", state.StatusMessage);
+        Assert.True(state.IsPendingRestartVisible);
+        Assert.Equal(ProviderSelectionMode.CodexOnly, state.RunningProviderSelectionMode);
+        Assert.Equal(ProviderSelectionMode.ClaudeOnly, state.SavedProviderSelectionMode);
+        Assert.Equal("Codex", state.RunningProviderSelectionLabel);
+        Assert.Equal("Claude", state.SavedProviderSelectionLabel);
+        Assert.Equal(
+            "Saved. TokenFish is still using Codex.\nRestart TokenFish to use Claude.",
+            state.PendingRestartMessage);
         Assert.Equal(ProviderSelectionMode.ClaudeOnly, store.SavedSettings!.ProviderSelectionMode);
     }
 
@@ -234,9 +251,11 @@ public sealed class CodexRuntimeSettingsPresenterTests
         var state = await presenter.SaveAsync(CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsStatusKind.Success, state.StatusKind);
+        Assert.Equal("Settings saved.", state.StatusMessage);
+        Assert.True(state.IsPendingRestartVisible);
         Assert.Equal(
-            "Provider and runtime changes take effect after TokenFish restarts.",
-            state.StatusMessage);
+            "Saved. TokenFish is still using Codex.\nRestart TokenFish to use Codex and Claude with the saved runtime settings.",
+            state.PendingRestartMessage);
         Assert.Equal(ProviderSelectionMode.Both, store.SavedSettings!.ProviderSelectionMode);
         Assert.Equal(CodexRuntimeMode.Wsl, store.SavedSettings.CodexRuntimeMode);
         Assert.Equal("Ubuntu", store.SavedSettings.CodexWslDistributionName);
@@ -252,6 +271,38 @@ public sealed class CodexRuntimeSettingsPresenterTests
         Assert.Equal(CodexRuntimeSettingsStatusKind.Information, state.StatusKind);
         Assert.True(state.IsStatusVisible);
         Assert.Equal("Settings are already up to date.", state.StatusMessage);
+        Assert.False(state.IsPendingRestartVisible);
+        Assert.Equal(string.Empty, state.PendingRestartMessage);
+    }
+
+    [Fact]
+    public async Task SavedProviderModeDoesNotAlterRunningProviderMode()
+    {
+        var presenter = CreatePresenter(new AppSettings());
+        presenter.SelectProviderSelectionMode(ProviderSelectionMode.ClaudeOnly);
+
+        var state = await presenter.SaveAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderSelectionMode.CodexOnly, state.RunningProviderSelectionMode);
+        Assert.Equal(ProviderSelectionMode.ClaudeOnly, state.ProviderSelectionMode);
+        Assert.Equal(ProviderSelectionMode.ClaudeOnly, state.SavedProviderSelectionMode);
+    }
+
+    [Fact]
+    public async Task ReturningSelectionToRunningModeClearsPendingRestartAfterSave()
+    {
+        var store = new RecordingSettingsStore(new AppSettings());
+        var presenter = CreatePresenter(store);
+        presenter.SelectProviderSelectionMode(ProviderSelectionMode.ClaudeOnly);
+        var pendingState = await presenter.SaveAsync(CancellationToken.None);
+
+        presenter.SelectProviderSelectionMode(ProviderSelectionMode.CodexOnly);
+        var clearedState = await presenter.SaveAsync(CancellationToken.None);
+
+        Assert.True(pendingState.IsPendingRestartVisible);
+        Assert.False(clearedState.IsPendingRestartVisible);
+        Assert.Equal("Saved. TokenFish is already using these settings.", clearedState.PendingRestartMessage);
+        Assert.Equal(ProviderSelectionMode.CodexOnly, store.SavedSettings!.ProviderSelectionMode);
     }
 
     [Fact]
@@ -284,6 +335,7 @@ public sealed class CodexRuntimeSettingsPresenterTests
         Assert.Equal(CodexRuntimeSettingsStatusKind.PersistenceError, state.StatusKind);
         Assert.True(state.IsStatusVisible);
         Assert.Equal("Settings could not be saved.", state.StatusMessage);
+        Assert.False(state.IsPendingRestartVisible);
         Assert.DoesNotContain("C:\\", state.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("secret", state.StatusMessage, StringComparison.OrdinalIgnoreCase);
     }
@@ -332,8 +384,9 @@ public sealed class CodexRuntimeSettingsPresenterTests
 
     private static CodexRuntimeSettingsPresenter CreatePresenter(
         RecordingSettingsStore store,
-        IProviderReadinessProvider? readinessProvider = null) =>
-        new(new CodexRuntimeSettingsEditor(store), readinessProvider);
+        IProviderReadinessProvider? readinessProvider = null,
+        AppSettings? runningSettings = null) =>
+        new(new CodexRuntimeSettingsEditor(store), readinessProvider, runningSettings);
 
     private sealed class RecordingReadinessProvider : IProviderReadinessProvider
     {
@@ -378,7 +431,7 @@ public sealed class CodexRuntimeSettingsPresenterTests
 
     private sealed class RecordingSettingsStore : IAppSettingsStore
     {
-        private readonly AppSettings _settings;
+        private AppSettings _settings;
 
         public RecordingSettingsStore(AppSettings settings)
         {
@@ -415,6 +468,7 @@ public sealed class CodexRuntimeSettingsPresenterTests
             }
 
             SavedSettings = settings;
+            _settings = settings;
         }
     }
 }

@@ -170,6 +170,12 @@ public sealed partial class SettingsWindow : Window
             StatusTextBlock.Text = state.StatusMessage;
             StatusBorder.Visibility = state.IsStatusVisible ? Visibility.Visible : Visibility.Collapsed;
             StatusBorder.BorderBrush = GetStatusBorderBrush(state.StatusKind);
+            RestartStatusTextBlock.Text = state.PendingRestartMessage;
+            CurrentProviderModeTextBlock.Text = state.RunningProviderSelectionLabel;
+            SavedProviderModeTextBlock.Text = state.SavedProviderSelectionLabel;
+            RestartStatusBorder.Visibility = state.IsPendingRestartVisible
+                ? Visibility.Visible
+                : Visibility.Collapsed;
             RenderReadinessRows(state.ReadinessRows);
         }
         finally

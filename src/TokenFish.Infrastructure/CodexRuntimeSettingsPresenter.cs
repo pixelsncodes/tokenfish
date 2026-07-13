@@ -1,4 +1,5 @@
 using TokenFish.Core.Models;
+using TokenFish.Core.Settings;
 
 namespace TokenFish.Infrastructure;
 
@@ -34,16 +35,27 @@ public sealed class CodexRuntimeSettingsPresenter
 
     private readonly CodexRuntimeSettingsEditor _editor;
     private readonly IProviderReadinessProvider _readinessProvider;
+    private readonly ProviderSelectionMode _runningProviderSelectionMode;
+    private readonly CodexRuntimeMode _runningRuntimeMode;
+    private readonly string _runningWslDistributionName;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
+    private SavedNextLaunchSettings? _savedNextLaunchSettings;
 
     public CodexRuntimeSettingsPresenter(
         CodexRuntimeSettingsEditor editor,
-        IProviderReadinessProvider? readinessProvider = null)
+        IProviderReadinessProvider? readinessProvider = null,
+        AppSettings? runningSettings = null)
     {
         ArgumentNullException.ThrowIfNull(editor);
 
         _editor = editor;
         _readinessProvider = readinessProvider ?? new ProviderReadinessProvider(null);
+        var normalizedRunningSettings = AppSettingsValidator.Normalize(
+            runningSettings ?? new AppSettings());
+        _runningProviderSelectionMode = normalizedRunningSettings.ProviderSelectionMode;
+        _runningRuntimeMode = normalizedRunningSettings.CodexRuntimeMode;
+        _runningWslDistributionName =
+            normalizedRunningSettings.CodexWslDistributionName ?? string.Empty;
         State = CreateState(
             ProviderSelectionMode.CodexOnly,
             CodexRuntimeMode.WslLoginShell,
@@ -194,15 +206,7 @@ public sealed class CodexRuntimeSettingsPresenter
                     CanSave = true,
                     IsSaving = false
                 },
-                CodexRuntimeSettingsSaveStatus.Saved => State with
-                {
-                    StatusMessage = CreateRestartMessage(result.ProviderChanged, result.RuntimeChanged),
-                    StatusKind = CodexRuntimeSettingsStatusKind.Success,
-                    FocusTarget = CodexRuntimeSettingsFocusTarget.None,
-                    IsStatusVisible = true,
-                    CanSave = true,
-                    IsSaving = false
-                },
+                CodexRuntimeSettingsSaveStatus.Saved => CreateSavedStateAfterSave(result),
                 CodexRuntimeSettingsSaveStatus.ValidationFailed => State with
                 {
                     StatusMessage = "Settings are not valid.",
@@ -266,13 +270,21 @@ public sealed class CodexRuntimeSettingsPresenter
             RuntimeModeOptions,
             runtimeMode,
             distributionName ?? string.Empty,
+            _runningProviderSelectionMode,
+            GetSavedProviderSelectionMode(providerSelectionMode),
+            GetProviderSelectionLabel(_runningProviderSelectionMode),
+            GetProviderSelectionLabel(GetSavedProviderSelectionMode(providerSelectionMode)),
+            CreatePendingRestartMessage(),
+            IsPendingRestartVisible(),
             isRuntimeModeEnabled,
             isWslDistributionEnabled,
             !isCodexEnabled,
             CodexSettingsRetainedDescription,
             isClaudeEnabled,
             ClaudeBridgeDescription,
-            _readinessProvider.CreateReadinessRows(providerSelectionMode, runtimeMode),
+            _readinessProvider.CreateReadinessRows(
+                _runningProviderSelectionMode,
+                _runningRuntimeMode),
             !isSaving,
             isSaving,
             statusMessage,
@@ -281,20 +293,89 @@ public sealed class CodexRuntimeSettingsPresenter
             focusTarget);
     }
 
-    private static string CreateRestartMessage(bool providerChanged, bool runtimeChanged)
+    private CodexRuntimeSettingsViewState CreateSavedStateAfterSave(
+        CodexRuntimeSettingsSaveResult result)
     {
-        if (providerChanged && runtimeChanged)
-        {
-            return "Provider and runtime changes take effect after TokenFish restarts.";
-        }
+        _savedNextLaunchSettings = new SavedNextLaunchSettings(
+            result.SavedProviderSelectionMode ?? State.ProviderSelectionMode,
+            result.SavedRuntimeMode ?? State.RuntimeMode,
+            result.SavedWslDistributionName ?? string.Empty);
 
-        if (providerChanged)
+        return State with
         {
-            return "Provider changes take effect after TokenFish restarts.";
-        }
-
-        return "Runtime changes take effect after TokenFish restarts.";
+            SavedProviderSelectionMode = _savedNextLaunchSettings.Value.ProviderSelectionMode,
+            SavedProviderSelectionLabel = GetProviderSelectionLabel(
+                _savedNextLaunchSettings.Value.ProviderSelectionMode),
+            PendingRestartMessage = CreatePendingRestartMessage(),
+            IsPendingRestartVisible = IsPendingRestartVisible(),
+            StatusMessage = "Settings saved.",
+            StatusKind = CodexRuntimeSettingsStatusKind.Success,
+            FocusTarget = CodexRuntimeSettingsFocusTarget.None,
+            IsStatusVisible = true,
+            CanSave = true,
+            IsSaving = false
+        };
     }
+
+    private ProviderSelectionMode GetSavedProviderSelectionMode(
+        ProviderSelectionMode fallbackProviderSelectionMode) =>
+        _savedNextLaunchSettings?.ProviderSelectionMode ?? fallbackProviderSelectionMode;
+
+    private bool IsPendingRestartVisible()
+    {
+        if (_savedNextLaunchSettings is not { } savedSettings)
+        {
+            return false;
+        }
+
+        return IsProviderPendingRestart(savedSettings) ||
+            IsRuntimePendingRestart(savedSettings);
+    }
+
+    private string CreatePendingRestartMessage()
+    {
+        if (_savedNextLaunchSettings is not { } savedSettings)
+        {
+            return string.Empty;
+        }
+
+        var runningLabel = GetProviderSelectionLabel(_runningProviderSelectionMode);
+        var savedLabel = GetProviderSelectionLabel(savedSettings.ProviderSelectionMode);
+        var providerPending = IsProviderPendingRestart(savedSettings);
+        var runtimePending = IsRuntimePendingRestart(savedSettings);
+
+        if (!providerPending && !runtimePending)
+        {
+            return "Saved. TokenFish is already using these settings.";
+        }
+
+        if (providerPending && runtimePending)
+        {
+            return $"Saved. TokenFish is still using {runningLabel}.\nRestart TokenFish to use {savedLabel} with the saved runtime settings.";
+        }
+
+        if (providerPending)
+        {
+            return $"Saved. TokenFish is still using {runningLabel}.\nRestart TokenFish to use {savedLabel}.";
+        }
+
+        return $"Saved. TokenFish is still using {runningLabel}.\nRestart TokenFish to use the saved runtime settings.";
+    }
+
+    private bool IsProviderPendingRestart(SavedNextLaunchSettings savedSettings) =>
+        savedSettings.ProviderSelectionMode != _runningProviderSelectionMode;
+
+    private bool IsRuntimePendingRestart(SavedNextLaunchSettings savedSettings) =>
+        savedSettings.RuntimeMode != _runningRuntimeMode ||
+        !string.Equals(
+            savedSettings.WslDistributionName,
+            _runningWslDistributionName,
+            StringComparison.Ordinal);
+
+    private static string GetProviderSelectionLabel(ProviderSelectionMode providerSelectionMode) =>
+        ProviderSelectionOptions
+            .First(option => option.ProviderSelectionMode == providerSelectionMode)
+            .Label;
 }
 
 public sealed record ProviderSelectionModeOption(
@@ -310,6 +391,12 @@ public sealed record CodexRuntimeSettingsViewState(
     IReadOnlyList<CodexRuntimeModeOption> RuntimeModeOptions,
     CodexRuntimeMode RuntimeMode,
     string WslDistributionName,
+    ProviderSelectionMode RunningProviderSelectionMode,
+    ProviderSelectionMode SavedProviderSelectionMode,
+    string RunningProviderSelectionLabel,
+    string SavedProviderSelectionLabel,
+    string PendingRestartMessage,
+    bool IsPendingRestartVisible,
     bool IsRuntimeModeEnabled,
     bool IsWslDistributionEnabled,
     bool IsCodexSettingsRetainedMessageVisible,
@@ -323,6 +410,11 @@ public sealed record CodexRuntimeSettingsViewState(
     CodexRuntimeSettingsStatusKind StatusKind,
     bool IsStatusVisible,
     CodexRuntimeSettingsFocusTarget FocusTarget);
+
+public readonly record struct SavedNextLaunchSettings(
+    ProviderSelectionMode ProviderSelectionMode,
+    CodexRuntimeMode RuntimeMode,
+    string WslDistributionName);
 
 public enum CodexRuntimeSettingsStatusKind
 {

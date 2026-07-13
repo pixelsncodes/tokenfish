@@ -96,7 +96,7 @@
                     <TextBlock
                         FontSize="16"
                         FontWeight="SemiBold"
-                        Text="Provider readiness" />
+                        Text="Current provider readiness" />
                     <StackPanel
                         x:Name="ProviderReadinessRowsStackPanel"
                         Spacing="8" />
@@ -152,6 +152,51 @@
                         Text="Leave empty to use the default WSL distribution."
                         TextWrapping="Wrap" />
                 </StackPanel>
+
+                <Border
+                    x:Name="RestartStatusBorder"
+                    Padding="10,8"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource SystemFillColorCautionBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Visibility="Collapsed">
+                    <StackPanel Spacing="6">
+                        <TextBlock
+                            FontWeight="SemiBold"
+                            Text="Restart required" />
+                        <TextBlock
+                            x:Name="RestartStatusTextBlock"
+                            AutomationProperties.LiveSetting="Polite"
+                            TextWrapping="Wrap" />
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="Current" />
+                            <TextBlock
+                                x:Name="CurrentProviderModeTextBlock"
+                                Grid.Column="1"
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                Grid.Row="1"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="Saved" />
+                            <TextBlock
+                                x:Name="SavedProviderModeTextBlock"
+                                Grid.Row="1"
+                                Grid.Column="1"
+                                TextWrapping="Wrap" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
                 <Border
                     x:Name="StatusBorder"

@@ -132,7 +132,10 @@ public partial class App : Application
         var editor = new CodexRuntimeSettingsEditor(_settingsStore);
         var readinessProvider = new ProviderReadinessProvider(
             _runtimeHost.Services?.ProviderRuntimeSnapshotStore);
-        var presenter = new CodexRuntimeSettingsPresenter(editor, readinessProvider);
+        var presenter = new CodexRuntimeSettingsPresenter(
+            editor,
+            readinessProvider,
+            _runtimeHost.CurrentSettings);
         return new SettingsWindowShell(new SettingsWindow(
             presenter,
             () => icon.TryGetIconRectangle(out var rectangle) ? rectangle : null));
