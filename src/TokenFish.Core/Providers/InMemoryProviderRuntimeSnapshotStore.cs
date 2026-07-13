@@ -31,17 +31,30 @@ public sealed class InMemoryProviderRuntimeSnapshotStore : IProviderRuntimeSnaps
     {
         ArgumentNullException.ThrowIfNull(snapshots);
 
+        Store(snapshots.Select(snapshot => new ProviderCollectionResult(
+            snapshot,
+            ProviderCollectionOutcome.Succeeded)).ToArray());
+    }
+
+    public void Store(IReadOnlyList<ProviderCollectionResult> results)
+    {
+        ArgumentNullException.ThrowIfNull(results);
+
         var acceptedAt = _timeProvider.GetUtcNow().ToUniversalTime();
 
         lock (_sync)
         {
-            foreach (var snapshot in snapshots)
+            foreach (var result in results)
             {
+                ArgumentNullException.ThrowIfNull(result);
+                var snapshot = result.Snapshot;
                 ArgumentNullException.ThrowIfNull(snapshot);
 
                 _snapshotsByProvider[snapshot.Provider] = new StoredSnapshot(
                     snapshot,
-                    acceptedAt);
+                    acceptedAt,
+                    result.Outcome,
+                    result.FailureReason);
             }
         }
     }
@@ -86,7 +99,9 @@ public sealed class InMemoryProviderRuntimeSnapshotStore : IProviderRuntimeSnaps
         new(
             storedSnapshot.Snapshot,
             storedSnapshot.AcceptedAt,
-            GetEffectiveFreshness(storedSnapshot));
+            GetEffectiveFreshness(storedSnapshot),
+            storedSnapshot.CollectionOutcome,
+            storedSnapshot.CollectionFailureReason);
 
     private DataFreshness GetEffectiveFreshness(StoredSnapshot storedSnapshot)
     {
@@ -158,5 +173,7 @@ public sealed class InMemoryProviderRuntimeSnapshotStore : IProviderRuntimeSnaps
 
     private sealed record StoredSnapshot(
         ProviderUsageSnapshot Snapshot,
-        DateTimeOffset AcceptedAt);
+        DateTimeOffset AcceptedAt,
+        ProviderCollectionOutcome CollectionOutcome,
+        ProviderCollectionFailureReason? CollectionFailureReason);
 }

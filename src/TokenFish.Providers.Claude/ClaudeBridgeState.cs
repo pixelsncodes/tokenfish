@@ -2,7 +2,8 @@ namespace TokenFish.Providers.Claude;
 
 internal sealed record ClaudeBridgeState(
     ClaudeBridgeQuotaWindowObservation? FiveHour,
-    ClaudeBridgeQuotaWindowObservation? SevenDay)
+    ClaudeBridgeQuotaWindowObservation? SevenDay,
+    ClaudeBridgeStateStoreFailureKind? LoadFailureKind = null)
 {
     public bool HasUsageData => FiveHour is not null || SevenDay is not null;
 

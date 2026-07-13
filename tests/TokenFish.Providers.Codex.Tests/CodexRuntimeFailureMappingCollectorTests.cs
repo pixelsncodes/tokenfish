@@ -40,6 +40,20 @@ public sealed class CodexRuntimeFailureMappingCollectorTests
         AssertSafeUnavailableSnapshot(snapshot);
     }
 
+    [Theory]
+    [MemberData(nameof(ExpectedRuntimeFailuresWithReasons))]
+    public async Task ExpectedRuntimeFailureRecordsStableReason(
+        Exception exception,
+        ProviderCollectionFailureReason expectedReason)
+    {
+        var collector = CreateCollector(new FakeProviderUsageCollector { CollectException = exception });
+
+        var result = await collector.CollectWithOutcomeAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderCollectionOutcome.Failed, result.Outcome);
+        Assert.Equal(expectedReason, result.FailureReason);
+    }
+
     [Fact]
     public async Task MappedSnapshotContainsNoFabricatedUsageValuesOrResetTimestamp()
     {
@@ -156,6 +170,16 @@ public sealed class CodexRuntimeFailureMappingCollectorTests
                 "sanitized account usage JSON-RPC failure",
                 123),
             new CodexUsageSnapshotNormalizationException("sanitized normalization failure")
+        };
+
+    public static TheoryData<Exception, ProviderCollectionFailureReason> ExpectedRuntimeFailuresWithReasons() =>
+        new()
+        {
+            { new CodexAppServerSessionException("sanitized startup failure"), ProviderCollectionFailureReason.CodexSession },
+            { new CodexAppServerProtocolException("sanitized protocol failure"), ProviderCollectionFailureReason.CodexProtocol },
+            { new CodexRateLimitsResponseParseException("sanitized rate-limit parse failure"), ProviderCollectionFailureReason.CodexRateLimitsResponse },
+            { new CodexAccountUsageResponseParseException("sanitized account usage parse failure"), ProviderCollectionFailureReason.CodexAccountUsageResponse },
+            { new CodexUsageSnapshotNormalizationException("sanitized normalization failure"), ProviderCollectionFailureReason.CodexUsageNormalization }
         };
 
     private static CodexRuntimeFailureMappingCollector CreateCollector(

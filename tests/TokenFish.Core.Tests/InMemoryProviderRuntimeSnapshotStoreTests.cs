@@ -31,6 +31,47 @@ public sealed class InMemoryProviderRuntimeSnapshotStoreTests
     }
 
     [Fact]
+    public void CollectionOutcomeIsStoredWithSnapshotWithoutChangingSourceObservationTime()
+    {
+        var store = CreateStore();
+        var observedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var snapshot = CreateSnapshot(ProviderKind.Claude, sourceObservedAt: observedAt);
+
+        store.Store([
+            new ProviderCollectionResult(
+                snapshot,
+                ProviderCollectionOutcome.Failed,
+                ProviderCollectionFailureReason.ClaudeBridgeMalformed)
+        ]);
+
+        Assert.True(store.TryGetCurrent(ProviderKind.Claude, out var state));
+        Assert.Same(snapshot, state.Snapshot);
+        Assert.Equal(observedAt, state.Snapshot.SourceObservedAt);
+        Assert.Equal(ProviderCollectionOutcome.Failed, state.CollectionOutcome);
+        Assert.Equal(ProviderCollectionFailureReason.ClaudeBridgeMalformed, state.CollectionFailureReason);
+    }
+
+    [Fact]
+    public async Task RefreshLifecycleCommitsSnapshotAndCollectionOutcomeTogether()
+    {
+        var store = CreateStore();
+        var snapshot = CreateUnavailableSnapshot(ProviderKind.Codex);
+        var collector = new OutcomeProviderUsageCollector(
+            new ProviderCollectionResult(
+                snapshot,
+                ProviderCollectionOutcome.Failed,
+                ProviderCollectionFailureReason.CodexProtocol));
+        await using var lifecycle = CreateLifecycle(collector, store);
+
+        await lifecycle.RefreshAsync(CancellationToken.None);
+
+        Assert.True(store.TryGetCurrent(ProviderKind.Codex, out var state));
+        Assert.Same(snapshot, state.Snapshot);
+        Assert.Equal(ProviderCollectionOutcome.Failed, state.CollectionOutcome);
+        Assert.Equal(ProviderCollectionFailureReason.CodexProtocol, state.CollectionFailureReason);
+    }
+
+    [Fact]
     public void NewSnapshotReplacesPriorSnapshotForSameProvider()
     {
         var store = CreateStore();
@@ -502,6 +543,17 @@ public sealed class InMemoryProviderRuntimeSnapshotStoreTests
             var response = _responses.Dequeue();
             return response(cancellationToken);
         }
+    }
+
+    private sealed class OutcomeProviderUsageCollector(ProviderCollectionResult result) : IProviderUsageCollector
+    {
+        public ProviderKind Provider => result.Snapshot.Provider;
+
+        public Task<ProviderUsageSnapshot> CollectAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(result.Snapshot);
+
+        public Task<ProviderCollectionResult> CollectWithOutcomeAsync(
+            CancellationToken cancellationToken) => Task.FromResult(result);
     }
 
     private sealed class TemporaryDirectory : IDisposable

@@ -45,8 +45,27 @@ public sealed class ProviderUsageCollectionCoordinator
         ProviderSelectionMode providerSelectionMode,
         CancellationToken cancellationToken)
     {
+        var results = await CollectWithOutcomesAsync(providerSelectionMode, cancellationToken)
+            .ConfigureAwait(false);
+
+        return results.Select(result => result.Snapshot).ToArray();
+    }
+
+    public Task<IReadOnlyList<ProviderCollectionResult>> CollectWithOutcomesAsync(
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        return CollectWithOutcomesAsync(settings.ProviderSelectionMode, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ProviderCollectionResult>> CollectWithOutcomesAsync(
+        ProviderSelectionMode providerSelectionMode,
+        CancellationToken cancellationToken)
+    {
         var enabledProviders = GetEnabledProviders(providerSelectionMode);
-        var snapshots = new List<ProviderUsageSnapshot>(enabledProviders.Length);
+        var results = new List<ProviderCollectionResult>(enabledProviders.Length);
 
         foreach (var provider in enabledProviders)
         {
@@ -58,7 +77,8 @@ public sealed class ProviderUsageCollectionCoordinator
                     $"No usage collector registered for enabled provider '{provider}'.");
             }
 
-            var snapshot = await collector.CollectAsync(cancellationToken);
+            var result = await collector.CollectWithOutcomeAsync(cancellationToken);
+            var snapshot = result.Snapshot;
 
             if (snapshot.Provider != provider)
             {
@@ -66,10 +86,10 @@ public sealed class ProviderUsageCollectionCoordinator
                     $"Usage collector for provider '{provider}' returned a snapshot for provider '{snapshot.Provider}'.");
             }
 
-            snapshots.Add(snapshot);
+            results.Add(result);
         }
 
-        return snapshots;
+        return results;
     }
 
     private static ProviderKind[] GetEnabledProviders(ProviderSelectionMode providerSelectionMode) =>

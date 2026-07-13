@@ -5,4 +5,6 @@ namespace TokenFish.Core.Providers;
 public sealed record ProviderRuntimeSnapshotState(
     ProviderUsageSnapshot Snapshot,
     DateTimeOffset AcceptedAt,
-    DataFreshness EffectiveFreshness);
+    DataFreshness EffectiveFreshness,
+    ProviderCollectionOutcome CollectionOutcome,
+    ProviderCollectionFailureReason? CollectionFailureReason);

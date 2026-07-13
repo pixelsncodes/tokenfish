@@ -70,7 +70,7 @@ internal sealed class ClaudeBridgeStateFileStore : IClaudeBridgeStateStore
 
             if (!hasLock)
             {
-                throw new ClaudeBridgeStateStoreException();
+                throw new ClaudeBridgeStateStoreException(ClaudeBridgeStateStoreFailureKind.Unreadable);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -90,7 +90,7 @@ internal sealed class ClaudeBridgeStateFileStore : IClaudeBridgeStateStore
         }
         catch
         {
-            throw new ClaudeBridgeStateStoreException();
+            throw new ClaudeBridgeStateStoreException(ClaudeBridgeStateStoreFailureKind.Unreadable);
         }
         finally
         {
@@ -113,7 +113,7 @@ internal sealed class ClaudeBridgeStateFileStore : IClaudeBridgeStateStore
             var fileInfo = new FileInfo(_stateFilePath);
             if (fileInfo.Length is <= 0 or > MaximumStateFileBytes)
             {
-                return ClaudeBridgeState.Empty;
+                return FailedState(ClaudeBridgeStateStoreFailureKind.Malformed);
             }
 
             using var stream = new FileStream(
@@ -130,15 +130,15 @@ internal sealed class ClaudeBridgeStateFileStore : IClaudeBridgeStateStore
         }
         catch (JsonException)
         {
-            return ClaudeBridgeState.Empty;
+            return FailedState(ClaudeBridgeStateStoreFailureKind.Malformed);
         }
         catch (IOException)
         {
-            return ClaudeBridgeState.Empty;
+            return FailedState(ClaudeBridgeStateStoreFailureKind.Unreadable);
         }
         catch (UnauthorizedAccessException)
         {
-            return ClaudeBridgeState.Empty;
+            return FailedState(ClaudeBridgeStateStoreFailureKind.Unreadable);
         }
     }
 
@@ -244,13 +244,16 @@ internal sealed class ClaudeBridgeStateFileStore : IClaudeBridgeStateStore
     {
         if (state is null || state.SchemaVersion != CurrentSchemaVersion)
         {
-            return ClaudeBridgeState.Empty;
+            return FailedState(ClaudeBridgeStateStoreFailureKind.Malformed);
         }
 
         return new ClaudeBridgeState(
             MapFromPersistence(state.FiveHour),
             MapFromPersistence(state.SevenDay));
     }
+
+    private static ClaudeBridgeState FailedState(ClaudeBridgeStateStoreFailureKind failureKind) =>
+        new(null, null, failureKind);
 
     private static ClaudeBridgeQuotaWindowObservation? MapFromPersistence(
         PersistedClaudeBridgeQuotaWindowObservation? observation)

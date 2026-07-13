@@ -62,14 +62,34 @@ public sealed class ClaudeProviderUsageCollector : IProviderUsageCollector
 
     public async Task<ProviderUsageSnapshot> CollectAsync(
         CancellationToken cancellationToken)
+        => (await CollectWithOutcomeAsync(cancellationToken).ConfigureAwait(false)).Snapshot;
+
+    public async Task<ProviderCollectionResult> CollectWithOutcomeAsync(
+        CancellationToken cancellationToken)
     {
         var state = await _stateStore.LoadAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return _snapshotFactory.Create(
+        if (state.LoadFailureKind is { } failureKind)
+        {
+            return new ProviderCollectionResult(
+                ClaudeUsageSnapshotFactory.CreateUnavailable(_timeProvider.GetUtcNow()),
+                ProviderCollectionOutcome.Failed,
+                failureKind is ClaudeBridgeStateStoreFailureKind.Malformed
+                    ? ProviderCollectionFailureReason.ClaudeBridgeMalformed
+                    : ProviderCollectionFailureReason.ClaudeBridgeUnreadable);
+        }
+
+        var snapshot = _snapshotFactory.Create(
             state,
             _timeProvider.GetUtcNow(),
             _freshnessThreshold,
             _futureTimestampTolerance);
+
+        return new ProviderCollectionResult(
+            snapshot,
+            snapshot.QuotaWindows.Count == 0
+                ? ProviderCollectionOutcome.NoObservation
+                : ProviderCollectionOutcome.Succeeded);
     }
 }

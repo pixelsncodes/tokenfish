@@ -21,14 +21,22 @@ internal sealed class CodexRuntimeFailureMappingCollector : IProviderUsageCollec
     public ProviderKind Provider => ProviderKind.Codex;
 
     public async Task<ProviderUsageSnapshot> CollectAsync(CancellationToken cancellationToken)
+        => (await CollectWithOutcomeAsync(cancellationToken).ConfigureAwait(false)).Snapshot;
+
+    public async Task<ProviderCollectionResult> CollectWithOutcomeAsync(
+        CancellationToken cancellationToken)
     {
         try
         {
-            return await _innerCollector.CollectAsync(cancellationToken).ConfigureAwait(false);
+            return await _innerCollector.CollectWithOutcomeAsync(cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception exception) when (IsExpectedCodexRuntimeFailure(exception))
         {
-            return CreateUnavailableSnapshot();
+            return new ProviderCollectionResult(
+                CreateUnavailableSnapshot(),
+                ProviderCollectionOutcome.Failed,
+                GetFailureReason(exception));
         }
     }
 
@@ -54,4 +62,15 @@ internal sealed class CodexRuntimeFailureMappingCollector : IProviderUsageCollec
         exception is CodexRateLimitsResponseParseException ||
         exception is CodexAccountUsageResponseParseException ||
         exception is CodexUsageSnapshotNormalizationException;
+
+    private static ProviderCollectionFailureReason GetFailureReason(Exception exception) =>
+        exception switch
+        {
+            CodexAppServerSessionException => ProviderCollectionFailureReason.CodexSession,
+            CodexAppServerProtocolException => ProviderCollectionFailureReason.CodexProtocol,
+            CodexRateLimitsResponseParseException => ProviderCollectionFailureReason.CodexRateLimitsResponse,
+            CodexAccountUsageResponseParseException => ProviderCollectionFailureReason.CodexAccountUsageResponse,
+            CodexUsageSnapshotNormalizationException => ProviderCollectionFailureReason.CodexUsageNormalization,
+            _ => throw new ArgumentOutOfRangeException(nameof(exception))
+        };
 }

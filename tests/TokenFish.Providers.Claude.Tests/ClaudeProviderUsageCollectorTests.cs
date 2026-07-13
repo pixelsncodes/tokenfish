@@ -1,4 +1,5 @@
 using TokenFish.Core.Models;
+using TokenFish.Core.Providers;
 using TokenFish.Providers.Claude;
 
 namespace TokenFish.Providers.Claude.Tests;
@@ -140,16 +141,43 @@ public sealed class ClaudeProviderUsageCollectorTests
     }
 
     [Fact]
+    public async Task MissingBridgeStateRecordsNoObservation()
+    {
+        var collector = CreateSafeCollector(new FixedStore(ClaudeBridgeState.Empty));
+
+        var result = await collector.CollectWithOutcomeAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderCollectionOutcome.NoObservation, result.Outcome);
+        Assert.Null(result.FailureReason);
+    }
+
+    [Fact]
+    public async Task ValidBridgeStateRecordsSucceededWithoutChangingSourceObservationTime()
+    {
+        var observedAt = Now.AddMinutes(-1);
+        var collector = CreateSafeCollector(new FixedStore(new ClaudeBridgeState(Window(24m, observedAt), null)));
+
+        var first = await collector.CollectWithOutcomeAsync(CancellationToken.None);
+        var second = await collector.CollectWithOutcomeAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderCollectionOutcome.Succeeded, first.Outcome);
+        Assert.Equal(observedAt, first.Snapshot.SourceObservedAt);
+        Assert.Equal(observedAt, second.Snapshot.SourceObservedAt);
+    }
+
+    [Fact]
     public async Task CorruptStateFileMapsSafely()
     {
         using var temp = new TemporaryDirectory();
         var path = temp.GetPath("claude-status-v1.json");
         await File.WriteAllTextAsync(path, "{not-json");
-        var collector = CreateCollector(new ClaudeBridgeStateFileStore(path));
+        var collector = CreateSafeCollector(new ClaudeBridgeStateFileStore(path));
 
-        var snapshot = await collector.CollectAsync(CancellationToken.None);
+        var result = await collector.CollectWithOutcomeAsync(CancellationToken.None);
 
-        Assert.Equal(ProviderConnectionState.Disconnected, snapshot.ConnectionState);
+        Assert.Equal(ProviderConnectionState.Disconnected, result.Snapshot.ConnectionState);
+        Assert.Equal(ProviderCollectionOutcome.Failed, result.Outcome);
+        Assert.Equal(ProviderCollectionFailureReason.ClaudeBridgeMalformed, result.FailureReason);
     }
 
     [Fact]
@@ -158,11 +186,13 @@ public sealed class ClaudeProviderUsageCollectorTests
         using var temp = new TemporaryDirectory();
         var path = temp.GetPath("claude-status-v1.json");
         await File.WriteAllBytesAsync(path, new byte[(64 * 1024) + 1]);
-        var collector = CreateCollector(new ClaudeBridgeStateFileStore(path));
+        var collector = CreateSafeCollector(new ClaudeBridgeStateFileStore(path));
 
-        var snapshot = await collector.CollectAsync(CancellationToken.None);
+        var result = await collector.CollectWithOutcomeAsync(CancellationToken.None);
 
-        Assert.Equal(ProviderConnectionState.Disconnected, snapshot.ConnectionState);
+        Assert.Equal(ProviderConnectionState.Disconnected, result.Snapshot.ConnectionState);
+        Assert.Equal(ProviderCollectionOutcome.Failed, result.Outcome);
+        Assert.Equal(ProviderCollectionFailureReason.ClaudeBridgeMalformed, result.FailureReason);
     }
 
     [Fact]
@@ -171,11 +201,13 @@ public sealed class ClaudeProviderUsageCollectorTests
         using var temp = new TemporaryDirectory();
         var path = temp.GetPath("claude-status-v1.json");
         await File.WriteAllTextAsync(path, """{"schemaVersion":999}""");
-        var collector = CreateCollector(new ClaudeBridgeStateFileStore(path));
+        var collector = CreateSafeCollector(new ClaudeBridgeStateFileStore(path));
 
-        var snapshot = await collector.CollectAsync(CancellationToken.None);
+        var result = await collector.CollectWithOutcomeAsync(CancellationToken.None);
 
-        Assert.Equal(ProviderConnectionState.Disconnected, snapshot.ConnectionState);
+        Assert.Equal(ProviderConnectionState.Disconnected, result.Snapshot.ConnectionState);
+        Assert.Equal(ProviderCollectionOutcome.Failed, result.Outcome);
+        Assert.Equal(ProviderCollectionFailureReason.ClaudeBridgeMalformed, result.FailureReason);
     }
 
     [Fact]
@@ -214,6 +246,17 @@ public sealed class ClaudeProviderUsageCollectorTests
     }
 
     [Fact]
+    public async Task UnreadableBridgeStateRecordsFailureReason()
+    {
+        var collector = CreateSafeCollector(new ThrowingStore(new ClaudeBridgeStateStoreException()));
+
+        var result = await collector.CollectWithOutcomeAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderCollectionOutcome.Failed, result.Outcome);
+        Assert.Equal(ProviderCollectionFailureReason.ClaudeBridgeUnreadable, result.FailureReason);
+    }
+
+    [Fact]
     public async Task CancellationPropagates()
     {
         using var cancellationTokenSource = new CancellationTokenSource();
@@ -230,6 +273,9 @@ public sealed class ClaudeProviderUsageCollectorTests
             new ManualTimeProvider(Now),
             TimeSpan.FromMinutes(2),
             TimeSpan.FromMinutes(2));
+
+    private static ClaudeBridgeFailureMappingCollector CreateSafeCollector(IClaudeBridgeStateStore store) =>
+        new(CreateCollector(store), new ManualTimeProvider(Now));
 
     private static Task<ProviderUsageSnapshot> CollectAsync(ClaudeBridgeState state) =>
         CreateCollector(new FixedStore(state)).CollectAsync(CancellationToken.None);

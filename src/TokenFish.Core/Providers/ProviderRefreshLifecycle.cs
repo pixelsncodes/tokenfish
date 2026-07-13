@@ -248,12 +248,12 @@ public sealed class ProviderRefreshLifecycle : IProviderRefreshLifecycle
             cancellationToken.ThrowIfCancellationRequested();
             SetRefreshStatus(CreateRefreshingStatus());
 
-            var snapshots = await _coordinator.CollectAsync(_settings, cancellationToken)
+            var results = await _coordinator.CollectWithOutcomesAsync(_settings, cancellationToken)
                 .ConfigureAwait(false);
-            _snapshotStore?.Store(snapshots);
+            _snapshotStore?.Store(results);
             SetRefreshStatus(CreateSucceededStatus());
 
-            return snapshots;
+            return results.Select(result => result.Snapshot).ToArray();
         }
         catch (OperationCanceledException)
             when (_shutdownCancellationTokenSource.IsCancellationRequested)

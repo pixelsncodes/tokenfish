@@ -19,14 +19,24 @@ internal sealed class ClaudeBridgeFailureMappingCollector : IProviderUsageCollec
     public ProviderKind Provider => ProviderKind.Claude;
 
     public async Task<ProviderUsageSnapshot> CollectAsync(CancellationToken cancellationToken)
+        => (await CollectWithOutcomeAsync(cancellationToken).ConfigureAwait(false)).Snapshot;
+
+    public async Task<ProviderCollectionResult> CollectWithOutcomeAsync(
+        CancellationToken cancellationToken)
     {
         try
         {
-            return await _innerCollector.CollectAsync(cancellationToken).ConfigureAwait(false);
+            var result = await _innerCollector.CollectWithOutcomeAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            return result;
         }
         catch (Exception exception) when (IsExpectedClaudeBridgeFailure(exception))
         {
-            return ClaudeUsageSnapshotFactory.CreateUnavailable(_timeProvider.GetUtcNow());
+            return new ProviderCollectionResult(
+                ClaudeUsageSnapshotFactory.CreateUnavailable(_timeProvider.GetUtcNow()),
+                ProviderCollectionOutcome.Failed,
+                GetFailureReason(exception));
         }
     }
 
@@ -34,4 +44,12 @@ internal sealed class ClaudeBridgeFailureMappingCollector : IProviderUsageCollec
         exception is ClaudeBridgeStateStoreException ||
         exception is IOException ||
         exception is UnauthorizedAccessException;
+
+    private static ProviderCollectionFailureReason GetFailureReason(Exception exception) =>
+        exception is ClaudeBridgeStateStoreException
+        {
+            FailureKind: ClaudeBridgeStateStoreFailureKind.Malformed
+        }
+            ? ProviderCollectionFailureReason.ClaudeBridgeMalformed
+            : ProviderCollectionFailureReason.ClaudeBridgeUnreadable;
 }
