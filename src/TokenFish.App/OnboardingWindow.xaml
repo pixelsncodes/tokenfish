@@ -36,6 +36,12 @@
                     <Button Content="Copy" Click="OnCopyClicked" HorizontalAlignment="Left" />
                     <TextBlock x:Name="CopyStatusTextBlock" AutomationProperties.LiveSetting="Polite" />
                 </StackPanel>
+                <StackPanel x:Name="VerificationPanel" Spacing="8">
+                    <TextBlock x:Name="VerificationSummaryTextBlock" AutomationProperties.LiveSetting="Polite" TextWrapping="Wrap" />
+                    <StackPanel x:Name="VerificationProvidersPanel" Spacing="8" />
+                    <ProgressRing x:Name="RecheckProgressRing" IsActive="False" Visibility="Collapsed" AutomationProperties.Name="Checking provider readiness" />
+                    <Button x:Name="RecheckButton" Content="Recheck" AutomationProperties.Name="Recheck provider readiness" Click="OnRecheckClicked" HorizontalAlignment="Left" />
+                </StackPanel>
                 <TextBlock x:Name="StatusTextBlock" Foreground="#FFB4AB" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">

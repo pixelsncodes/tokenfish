@@ -144,6 +144,14 @@ public partial class App : Application
         {
             await _settingsStore.SaveAsync(settings, CancellationToken.None);
             await StartRuntimeAsync();
+            if (_runtimeHost.Services is { } services && _onboardingWindow is not null)
+            {
+                _onboardingWindow.ShowVerification(
+                    new OnboardingReadinessCoordinator(
+                        services.ProviderRuntimeSnapshotStore,
+                        services.ProviderRefreshLifecycle),
+                    settings);
+            }
         }
         catch
         {

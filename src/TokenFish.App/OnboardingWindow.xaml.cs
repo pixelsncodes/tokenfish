@@ -1,6 +1,7 @@
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
 using TokenFish.Core.Models;
 using TokenFish.Infrastructure;
 
@@ -12,6 +13,11 @@ public sealed partial class OnboardingWindow : Window
     private readonly IClipboardService _clipboard;
     private readonly string _claudeSnippet;
     private bool _terminalResult;
+    private IOnboardingReadinessCoordinator? _readinessCoordinator;
+    private AppSettings? _effectiveSettings;
+    private readonly OnboardingVerificationPresenter _verificationPresenter = new();
+    private OnboardingVerificationDisplayState? _verificationState;
+    private bool _isRechecking;
 
     public OnboardingWindow(
         OnboardingFlowController flow,
@@ -84,6 +90,43 @@ public sealed partial class OnboardingWindow : Window
         Close();
     }
 
+    public void ShowVerification(IOnboardingReadinessCoordinator coordinator, AppSettings effectiveSettings)
+    {
+        _readinessCoordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
+        _effectiveSettings = effectiveSettings ?? throw new ArgumentNullException(nameof(effectiveSettings));
+        _verificationState = _verificationPresenter.Present(coordinator.Evaluate(effectiveSettings));
+        Render();
+    }
+
+    private async void OnRecheckClicked(object sender, RoutedEventArgs args)
+    {
+        if (_isRechecking || _readinessCoordinator is null || _effectiveSettings is null)
+        {
+            return;
+        }
+        _isRechecking = true;
+        Render();
+        try
+        {
+            _verificationState = _verificationPresenter.Present(await _readinessCoordinator.RecheckAsync(_effectiveSettings, CancellationToken.None));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            if (_verificationState is not null)
+            {
+                _verificationState = _verificationState with { HasRecheckError = true, Announcement = "Recheck could not be completed. Try again." };
+            }
+        }
+        finally
+        {
+            _isRechecking = false;
+            Render();
+        }
+    }
+
     private void OnRuntimeModeChanged(object sender, SelectionChangedEventArgs args)
     {
         if (RuntimeModeComboBox.SelectedItem is ComboBoxItem { Tag: string tag } &&
@@ -131,11 +174,30 @@ public sealed partial class OnboardingWindow : Window
         ProviderSelectionPanel.Visibility = _flow.Step == OnboardingStep.ProviderSelection ? Visibility.Visible : Visibility.Collapsed;
         RuntimePanel.Visibility = _flow.Step == OnboardingStep.CodexRuntime ? Visibility.Visible : Visibility.Collapsed;
         ClaudePanel.Visibility = _flow.Step == OnboardingStep.ClaudeBridge ? Visibility.Visible : Visibility.Collapsed;
+        VerificationPanel.Visibility = _flow.Step == OnboardingStep.Verification ? Visibility.Visible : Visibility.Collapsed;
         ClaudeSnippetTextBox.Text = _claudeSnippet;
         ClaudeCheckBox.IsChecked = _flow.IsClaudeSelected;
         CodexCheckBox.IsChecked = _flow.IsCodexSelected;
         StatusTextBlock.Text = _flow.ValidationMessage;
         BackButton.IsEnabled = _flow.Step != OnboardingStep.Welcome;
         ContinueButton.Content = _flow.Step == OnboardingStep.Finish ? "Finish setup" : "Continue";
+        if (_verificationState is not null)
+        {
+            VerificationSummaryTextBlock.Text = _verificationState.Announcement;
+            RecheckButton.IsEnabled = !_isRechecking;
+            RecheckProgressRing.IsActive = _isRechecking;
+            RecheckProgressRing.Visibility = _isRechecking ? Visibility.Visible : Visibility.Collapsed;
+            VerificationProvidersPanel.Children.Clear();
+            foreach (var provider in _verificationState.Providers)
+            {
+                var textBlock = new TextBlock
+                {
+                    Text = $"{provider.Provider}: {provider.Heading}. {provider.Description}",
+                    TextWrapping = TextWrapping.Wrap
+                };
+                AutomationProperties.SetName(textBlock, $"{provider.Provider} {provider.Heading}");
+                VerificationProvidersPanel.Children.Add(textBlock);
+            }
+        }
     }
 }
