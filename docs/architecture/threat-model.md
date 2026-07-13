@@ -27,6 +27,7 @@ Mitigations:
 - Reject unknown fields when a bridge contract requires allowlisting.
 - Bound payload size and update frequency.
 - Fall back to degraded provider state instead of crashing.
+- Accept Claude status-line input only through the local bridge executable over standard input, then store only normalized allowlisted quota observations with bounded locking, same-directory temporary files, and atomic replacement.
 
 ### Command Injection Through WSL Process Launching
 

@@ -16,6 +16,8 @@ Codex communication must go through the locally installed Codex App Server over 
 
 Claude communication must go through an allowlisted local status-line data bridge. TokenFish must accept only the documented bridge payload shape and must treat malformed or unexpected data as untrusted input.
 
+The Claude status-line bridge persists only normalized five-hour and seven-day quota observations under `%LOCALAPPDATA%\TokenFish\bridge\claude-status-v1.json`. TokenFish does not edit Claude Code settings and does not read Claude transcripts, prompts, workspaces, cookies, credentials, terminal history, repository identity, model names, costs, or account identifiers.
+
 Provider integrations are intentionally outside the initial scaffold. Future provider code must preserve these data boundaries.
 
 ## Logging and Diagnostics
