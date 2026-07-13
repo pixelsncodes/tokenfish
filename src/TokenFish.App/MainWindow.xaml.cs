@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
@@ -50,7 +49,6 @@ public sealed partial class MainWindow : Window
     private void InitializeIconSurfaces()
     {
         TrySetWindowIcon();
-        TrySetHeaderIcon();
     }
 
     private void TrySetWindowIcon()
@@ -69,43 +67,6 @@ public sealed partial class MainWindow : Window
         catch
         {
         }
-    }
-
-    private void TrySetHeaderIcon()
-    {
-        HeaderIcon.ImageOpened += OnHeaderIconImageOpened;
-        HeaderIcon.ImageFailed += OnHeaderIconImageFailed;
-
-        if (!ApplicationIconPath.TryResolveExistingHeaderIcon(
-            AppContext.BaseDirectory,
-            out var iconPath))
-        {
-            HeaderIcon.Source = null;
-            HeaderIcon.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        try
-        {
-            HeaderIcon.Source = new BitmapImage(new Uri(iconPath));
-        }
-        catch
-        {
-            HeaderIcon.Source = null;
-            HeaderIcon.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private void OnHeaderIconImageOpened(object sender, RoutedEventArgs args)
-    {
-        HeaderIcon.Visibility = Visibility.Visible;
-        ContentSizeInvalidated?.Invoke();
-    }
-
-    private void OnHeaderIconImageFailed(object sender, ExceptionRoutedEventArgs args)
-    {
-        HeaderIcon.Source = null;
-        HeaderIcon.Visibility = Visibility.Collapsed;
     }
 
     public void UpdateState(TrayPopupDisplayState state)
@@ -400,7 +361,7 @@ public sealed partial class MainWindow : Window
         Canvas.SetTop(body, 3.5);
         AutomationProperties.SetAccessibilityView(body, AccessibilityView.Raw);
         fish.Children.Add(body);
-        var fin = new Polygon
+        var dorsalFin = new Polygon
         {
             Points = new PointCollection
             {
@@ -411,8 +372,8 @@ public sealed partial class MainWindow : Window
             Fill = accent,
             Opacity = 0.85
         };
-        AutomationProperties.SetAccessibilityView(fin, AccessibilityView.Raw);
-        fish.Children.Add(fin);
+        AutomationProperties.SetAccessibilityView(dorsalFin, AccessibilityView.Raw);
+        fish.Children.Add(dorsalFin);
         var eye = new Ellipse
         {
             Width = 3,
@@ -423,9 +384,33 @@ public sealed partial class MainWindow : Window
         Canvas.SetTop(eye, 6);
         AutomationProperties.SetAccessibilityView(eye, AccessibilityView.Raw);
         fish.Children.Add(eye);
+        var upperJaw = new Polygon
+        {
+            Points = new PointCollection
+            {
+                new Windows.Foundation.Point(19, 7),
+                new Windows.Foundation.Point(26, 6),
+                new Windows.Foundation.Point(23, 9)
+            },
+            Fill = accent
+        };
+        AutomationProperties.SetAccessibilityView(upperJaw, AccessibilityView.Raw);
+        fish.Children.Add(upperJaw);
+        var lowerJaw = new Polygon
+        {
+            Points = new PointCollection
+            {
+                new Windows.Foundation.Point(19, 11),
+                new Windows.Foundation.Point(26, 12),
+                new Windows.Foundation.Point(23, 9)
+            },
+            Fill = accent
+        };
+        AutomationProperties.SetAccessibilityView(lowerJaw, AccessibilityView.Raw);
+        fish.Children.Add(lowerJaw);
         canvas.Children.Add(fish);
         Canvas.SetTop(fish, 1);
-        StartFishIdleAnimation(tail);
+        StartFishIdleAnimation(tail, upperJaw, lowerJaw);
 
         var view = new QuotaRailView(canvas, fish, railWidth, fishWidth);
         view.Update(quotaWindow);
@@ -443,7 +428,10 @@ public sealed partial class MainWindow : Window
     private static Brush GetPopupBrush(string resourceKey) =>
         (Brush)Application.Current.Resources[resourceKey];
 
-    private static void StartFishIdleAnimation(Polygon tail)
+    private static void StartFishIdleAnimation(
+        Polygon tail,
+        Polygon upperJaw,
+        Polygon lowerJaw)
     {
         if (!FishAnimationSettings.ShouldAnimate(SystemAnimationsEnabled()))
         {
@@ -464,8 +452,40 @@ public sealed partial class MainWindow : Window
         };
         Storyboard.SetTarget(animation, transform);
         Storyboard.SetTargetProperty(animation, "Rotation");
+
+        var upperJawTransform = new CompositeTransform();
+        upperJaw.RenderTransform = upperJawTransform;
+        upperJaw.RenderTransformOrigin = new Windows.Foundation.Point(0.2, 0.5);
+        var upperJawAnimation = new DoubleAnimation
+        {
+            From = 0,
+            To = -0.9,
+            Duration = TimeSpan.FromMilliseconds(450),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EnableDependentAnimation = true
+        };
+        Storyboard.SetTarget(upperJawAnimation, upperJawTransform);
+        Storyboard.SetTargetProperty(upperJawAnimation, "TranslateY");
+
+        var lowerJawTransform = new CompositeTransform();
+        lowerJaw.RenderTransform = lowerJawTransform;
+        lowerJaw.RenderTransformOrigin = new Windows.Foundation.Point(0.2, 0.5);
+        var lowerJawAnimation = new DoubleAnimation
+        {
+            From = 0,
+            To = 0.9,
+            Duration = TimeSpan.FromMilliseconds(450),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EnableDependentAnimation = true
+        };
+        Storyboard.SetTarget(lowerJawAnimation, lowerJawTransform);
+        Storyboard.SetTargetProperty(lowerJawAnimation, "TranslateY");
         var storyboard = new Storyboard();
         storyboard.Children.Add(animation);
+        storyboard.Children.Add(upperJawAnimation);
+        storyboard.Children.Add(lowerJawAnimation);
         storyboard.Begin();
     }
 
