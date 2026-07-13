@@ -126,7 +126,6 @@ public sealed partial class MainWindow : Window
     private static ProviderCardView CreateProviderCard(ProviderCardDisplayState provider)
     {
         var accent = GetProviderAccent(provider.Provider);
-        var railAccent = GetProviderRailAccent(provider.Provider);
         var card = new Border
         {
             Padding = new Thickness(14, 12, 14, 12),
@@ -145,7 +144,7 @@ public sealed partial class MainWindow : Window
         var quotaViews = new List<QuotaWindowView>(provider.QuotaWindows.Count);
         foreach (var quotaWindow in provider.QuotaWindows)
         {
-            var quotaView = CreateQuotaWindowSection(quotaWindow, accent, railAccent);
+            var quotaView = CreateQuotaWindowSection(quotaWindow, accent);
             quotaViews.Add(quotaView);
             stack.Children.Add(quotaView.Root);
         }
@@ -235,8 +234,7 @@ public sealed partial class MainWindow : Window
 
     private static QuotaWindowView CreateQuotaWindowSection(
         PopupQuotaWindowDisplayState quotaWindow,
-        Brush accent,
-        Brush railAccent)
+        Brush accent)
     {
         var stack = new StackPanel { Spacing = 5 };
 
@@ -265,7 +263,7 @@ public sealed partial class MainWindow : Window
         header.Children.Add(percentageText);
         stack.Children.Add(header);
 
-        var rail = CreateQuotaRail(quotaWindow, accent, railAccent);
+        var rail = CreateQuotaRail(quotaWindow, accent);
         stack.Children.Add(rail.Root);
 
         TextBlock? relativeReset = null;
@@ -305,8 +303,7 @@ public sealed partial class MainWindow : Window
 
     private static QuotaRailView CreateQuotaRail(
         PopupQuotaWindowDisplayState quotaWindow,
-        Brush accent,
-        Brush railAccent)
+        Brush accent)
     {
         const double railWidth = PopupRailWidth;
         const double fishWidth = FishWidth;
@@ -329,25 +326,29 @@ public sealed partial class MainWindow : Window
         {
             Height = 4,
             CornerRadius = new CornerRadius(2),
-            Background = railAccent,
+            Background = accent,
             Margin = new Thickness(0, 9, 0, 0)
         };
         AutomationProperties.SetAccessibilityView(railRemainder, AccessibilityView.Raw);
         canvas.Children.Add(railRemainder);
 
+        var neutralPelletBrush = CreateBrush(0xFF, 0x79, 0x8A, 0x9E);
+        var providerPelletBrush = CreateContrastPelletBrush(accent);
+        var pellets = new List<Ellipse>(12);
         for (var index = 0; index < 12; index++)
         {
             var pellet = new Ellipse
             {
                 Width = 3,
                 Height = 3,
-                Fill = CreateBrush(0xFF, 0x79, 0x8A, 0x9E),
+                Fill = neutralPelletBrush,
                 Opacity = 0.8
             };
             Canvas.SetLeft(pellet, 12 + (index * 23));
             Canvas.SetTop(pellet, 9.5);
             AutomationProperties.SetAccessibilityView(pellet, AccessibilityView.Raw);
             canvas.Children.Add(pellet);
+            pellets.Add(pellet);
         }
 
         var fish = new Canvas { Width = fishWidth, Height = 25 };
@@ -387,7 +388,15 @@ public sealed partial class MainWindow : Window
         Canvas.SetTop(fish, -1.5);
         StartFishMouthAnimation(tail);
 
-        var view = new QuotaRailView(canvas, fish, railRemainder, railWidth, fishWidth);
+        var view = new QuotaRailView(
+            canvas,
+            fish,
+            railRemainder,
+            pellets,
+            neutralPelletBrush,
+            providerPelletBrush,
+            railWidth,
+            fishWidth);
         view.Update(quotaWindow);
         return view;
     }
@@ -397,13 +406,21 @@ public sealed partial class MainWindow : Window
             ? CreateBrush(0xFF, 0xFF, 0x88, 0x5A)
             : CreateBrush(0xFF, 0x52, 0xD6, 0xD0);
 
-    private static Brush GetProviderRailAccent(TokenFish.Core.Models.ProviderKind provider) =>
-        provider == TokenFish.Core.Models.ProviderKind.Claude
-            ? GetProviderAccent(provider)
-            : CreateBrush(0xFF, 0x5B, 0x8D, 0xFF);
-
     private static Brush CreateBrush(byte alpha, byte red, byte green, byte blue) =>
         new SolidColorBrush(Color.FromArgb(alpha, red, green, blue));
+
+    private static Brush CreateContrastPelletBrush(Brush accent)
+    {
+        var color = ((SolidColorBrush)accent).Color;
+        return CreateBrush(
+            0xFF,
+            Lighten(color.R),
+            Lighten(color.G),
+            Lighten(color.B));
+    }
+
+    private static byte Lighten(byte value) =>
+        (byte)(value + ((0xFF - value) * 0.45));
 
     private static Brush GetPopupBrush(string resourceKey) =>
         (Brush)Application.Current.Resources[resourceKey];
@@ -706,18 +723,27 @@ public sealed partial class MainWindow : Window
             Canvas root,
             Canvas crawler,
             Border remainder,
+            IReadOnlyList<Ellipse> pellets,
+            Brush neutralPelletBrush,
+            Brush providerPelletBrush,
             double railWidth,
             double crawlerWidth)
         {
             Root = root;
             _crawler = crawler;
             _remainder = remainder;
+            _pellets = pellets;
+            _neutralPelletBrush = neutralPelletBrush;
+            _providerPelletBrush = providerPelletBrush;
             _railWidth = railWidth;
             _crawlerWidth = crawlerWidth;
         }
 
         private readonly Canvas _crawler;
         private readonly Border _remainder;
+        private readonly IReadOnlyList<Ellipse> _pellets;
+        private readonly Brush _neutralPelletBrush;
+        private readonly Brush _providerPelletBrush;
         private readonly double _railWidth;
         private readonly double _crawlerWidth;
 
@@ -734,6 +760,13 @@ public sealed partial class MainWindow : Window
             var remainderStart = crawlerOffset + _crawlerWidth;
             Canvas.SetLeft(_remainder, remainderStart);
             _remainder.Width = Math.Max(0, _railWidth - remainderStart);
+
+            foreach (var pellet in _pellets)
+            {
+                var isAheadOfFish = Canvas.GetLeft(pellet) >= remainderStart;
+                pellet.Fill = isAheadOfFish ? _providerPelletBrush : _neutralPelletBrush;
+                pellet.Opacity = isAheadOfFish ? 1 : 0.8;
+            }
         }
     }
 
