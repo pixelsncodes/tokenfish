@@ -92,7 +92,7 @@ public sealed class TrayPopupDisplayStateAdapter
         }
 
         var snapshot = state.Snapshot;
-        var quotaWindows = CreateQuotaWindows(snapshot);
+        var quotaWindows = CreateQuotaWindows(provider, snapshot);
         var activityRows = CreateActivityRows(snapshot);
         var hasAvailableMetrics = quotaWindows.Count > 0 || activityRows.Count > 0;
         return new ProviderCardDisplayState(
@@ -109,10 +109,16 @@ public sealed class TrayPopupDisplayStateAdapter
     }
 
     private IReadOnlyList<PopupQuotaWindowDisplayState> CreateQuotaWindows(
+        ProviderKind provider,
         ProviderUsageSnapshot snapshot)
     {
         var windows = snapshot.QuotaWindows
             .Where(window => window.IsAvailable)
+            .Where(window => provider != ProviderKind.Claude ||
+                string.Equals(
+                    window.WindowId,
+                    "claude:status-line:five-hour",
+                    StringComparison.Ordinal))
             .ToArray();
         var displayWindows = new List<PopupQuotaWindowDisplayState>(windows.Length);
 

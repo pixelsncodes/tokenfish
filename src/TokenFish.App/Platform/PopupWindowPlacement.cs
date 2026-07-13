@@ -13,12 +13,13 @@ internal static class PopupWindowPlacement
     {
         ArgumentNullException.ThrowIfNull(window);
 
+        var configuration = PopupWindowPresenterConfiguration.TrayPopup;
         var presenter = OverlappedPresenter.Create();
-        presenter.SetBorderAndTitleBar(false, false);
-        presenter.IsResizable = false;
-        presenter.IsMaximizable = false;
-        presenter.IsMinimizable = false;
         window.AppWindow.SetPresenter(presenter);
+        presenter.SetBorderAndTitleBar(configuration.HasBorder, configuration.HasTitleBar);
+        presenter.IsResizable = configuration.IsResizable;
+        presenter.IsMaximizable = configuration.IsMaximizable;
+        presenter.IsMinimizable = configuration.IsMinimizable;
 
         var handle = WindowNative.GetWindowHandle(window);
         var extendedStyle = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GwlExStyle);

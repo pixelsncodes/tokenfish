@@ -55,24 +55,27 @@ public sealed class TrayPopupDisplayStateAdapterTests
     }
 
     [Fact]
-    public void ClaudeQuotaWindowsDisplayWithoutFabricatedActivity()
+    public void ClaudePopupDisplaysOnlyFiveHourQuotaWhileSnapshotRetainsSevenDayQuota()
     {
+        var snapshot = CreateSnapshot(
+            ProviderKind.Claude,
+            sessionTokens: null,
+            weeklyTokens: null,
+            quotaWindows:
+            [
+                ClaudeQuotaWindow("claude:status-line:five-hour", "5h", 24m),
+                ClaudeQuotaWindow("claude:status-line:seven-day", "7d", 41m)
+            ],
+            activityMetrics: []);
         var provider = SingleProvider(
-            CreateSnapshot(
-                ProviderKind.Claude,
-                sessionTokens: null,
-                weeklyTokens: null,
-                quotaWindows:
-                [
-                    ClaudeQuotaWindow("claude:status-line:five-hour", "5h", 24m),
-                    ClaudeQuotaWindow("claude:status-line:seven-day", "7d", 41m)
-                ],
-                activityMetrics: []),
+            snapshot,
             new AppSettings { ProviderSelectionMode = ProviderSelectionMode.ClaudeOnly });
 
+        Assert.Equal(2, snapshot.QuotaWindows.Count);
+        Assert.Contains(snapshot.QuotaWindows, window => window.WindowId == "claude:status-line:seven-day");
         Assert.Equal("Claude", provider.ProviderName);
-        Assert.Equal(["5h usage", "7d usage"], provider.QuotaWindows.Select(window => window.Label));
-        Assert.Equal(["24% used", "41% used"], provider.QuotaWindows.Select(window => window.PercentageText));
+        Assert.Equal(["5h usage"], provider.QuotaWindows.Select(window => window.Label));
+        Assert.Equal(["24% used"], provider.QuotaWindows.Select(window => window.PercentageText));
         Assert.Empty(provider.ActivityRows);
     }
 

@@ -16,4 +16,16 @@ public sealed class QuotaRailPositionCalculatorTests
             expectedOffset,
             QuotaRailPositionCalculator.CalculateCrawlerOffset(percentage, 300, 20));
     }
+
+    [Theory]
+    [InlineData(-1, 0)]
+    [InlineData(0, 0)]
+    [InlineData(100, 274)]
+    [InlineData(101, 274)]
+    public void FishOffsetKeepsTheWiderMarkerInsideTheRail(decimal percentage, double expectedOffset)
+    {
+        Assert.Equal(
+            expectedOffset,
+            QuotaRailPositionCalculator.CalculateCrawlerOffset(percentage, 300, 26));
+    }
 }

@@ -38,10 +38,11 @@
                 <TextBlock
                     FontSize="18"
                     FontWeight="SemiBold"
+                    Foreground="{StaticResource PopupTextPrimaryBrush}"
                     Text="TokenFish" />
                 <TextBlock
                     x:Name="StatusText"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Foreground="{StaticResource PopupTextSecondaryBrush}"
                     Text="Starting TokenFish" />
             </StackPanel>
 
@@ -69,7 +70,10 @@
             BorderThickness="1"
             CornerRadius="6"
             Visibility="Collapsed">
-            <TextBlock x:Name="StatusBannerText" TextWrapping="Wrap" />
+            <TextBlock
+                x:Name="StatusBannerText"
+                Foreground="{StaticResource PopupTextPrimaryBrush}"
+                TextWrapping="Wrap" />
         </Border>
 
         <ScrollViewer
@@ -83,7 +87,7 @@
             x:Name="RefreshCommandStatusText"
             Grid.Row="3"
             AutomationProperties.LiveSetting="Polite"
-            Foreground="#B4C0D0"
+            Foreground="{StaticResource PopupTextSecondaryBrush}"
             TextWrapping="Wrap"
             Visibility="Collapsed" />
     </Grid>

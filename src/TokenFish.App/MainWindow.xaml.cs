@@ -4,14 +4,20 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
 using TokenFish.Infrastructure;
 using Windows.UI;
+using Windows.UI.ViewManagement;
 
 namespace TokenFish.App;
 
 public sealed partial class MainWindow : Window
 {
+    private const double PopupRailWidth = 300;
+    private const double FishWidth = 26;
+    private static readonly Brush PopupTextPrimaryBrush = GetPopupBrush("PopupTextPrimaryBrush");
+    private static readonly Brush PopupTextSecondaryBrush = GetPopupBrush("PopupTextSecondaryBrush");
     private readonly PopupDisplayStateUpdatePlanner _updatePlanner = new();
     private readonly List<ProviderCardView> _providerCards = [];
     private bool _allowClose;
@@ -197,8 +203,7 @@ public sealed partial class MainWindow : Window
             emptyUsageMessage = new TextBlock
             {
                 Text = provider.EmptyUsageMessage,
-                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
-                    "TextFillColorSecondaryBrush"],
+                Foreground = PopupTextSecondaryBrush,
                 TextWrapping = TextWrapping.WrapWholeWords
             };
             stack.Children.Add(emptyUsageMessage);
@@ -242,6 +247,7 @@ public sealed partial class MainWindow : Window
             Text = provider.ProviderName,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             FontSize = 15,
+            Foreground = PopupTextPrimaryBrush,
             TextTrimming = TextTrimming.CharacterEllipsis
         };
         AutomationProperties.SetHeadingLevel(
@@ -253,7 +259,7 @@ public sealed partial class MainWindow : Window
         var connection = new TextBlock
         {
             Text = provider.ConnectionState,
-            Foreground = CreateBrush(0xFF, 0xB4, 0xC0, 0xD0),
+            Foreground = PopupTextSecondaryBrush,
             TextAlignment = TextAlignment.Right,
             TextWrapping = TextWrapping.NoWrap
         };
@@ -278,6 +284,7 @@ public sealed partial class MainWindow : Window
         {
             Text = quotaWindow.Label,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = PopupTextPrimaryBrush,
             TextWrapping = TextWrapping.WrapWholeWords
         };
         header.Children.Add(label);
@@ -304,6 +311,7 @@ public sealed partial class MainWindow : Window
             {
                 Text = quotaWindow.RelativeResetText,
                 Margin = new Thickness(0, 2, 0, 0),
+                Foreground = PopupTextPrimaryBrush,
                 TextWrapping = TextWrapping.WrapWholeWords
             };
             stack.Children.Add(relativeReset);
@@ -315,8 +323,7 @@ public sealed partial class MainWindow : Window
             exactReset = new TextBlock
             {
                 Text = quotaWindow.ExactResetText,
-                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
-                    "TextFillColorSecondaryBrush"],
+                Foreground = PopupTextSecondaryBrush,
                 TextWrapping = TextWrapping.WrapWholeWords
             };
             stack.Children.Add(exactReset);
@@ -334,14 +341,15 @@ public sealed partial class MainWindow : Window
 
     private static QuotaRailView CreateQuotaRail(PopupQuotaWindowDisplayState quotaWindow, Brush accent)
     {
-        const double railWidth = 300;
-        const double crawlerWidth = 24;
+        const double railWidth = PopupRailWidth;
+        const double fishWidth = FishWidth;
         var canvas = new Canvas
         {
             Width = railWidth,
             Height = 22,
             IsHitTestVisible = false
         };
+        AutomationProperties.SetAccessibilityView(canvas, AccessibilityView.Raw);
         canvas.Children.Add(new Border
         {
             Width = railWidth,
@@ -362,35 +370,63 @@ public sealed partial class MainWindow : Window
             };
             Canvas.SetLeft(pellet, 12 + (index * 23));
             Canvas.SetTop(pellet, 9.5);
+            AutomationProperties.SetAccessibilityView(pellet, AccessibilityView.Raw);
             canvas.Children.Add(pellet);
         }
 
-        var crawler = new Canvas { Width = crawlerWidth, Height = 18 };
-        crawler.Children.Add(new Polygon
+        var fish = new Canvas { Width = fishWidth, Height = 18 };
+        AutomationProperties.SetAccessibilityView(fish, AccessibilityView.Raw);
+        var tail = new Polygon
         {
             Points = new PointCollection
             {
-                new Windows.Foundation.Point(1, 9),
-                new Windows.Foundation.Point(8, 2),
-                new Windows.Foundation.Point(22, 4),
-                new Windows.Foundation.Point(24, 9),
-                new Windows.Foundation.Point(22, 14),
-                new Windows.Foundation.Point(8, 16)
+                new Windows.Foundation.Point(8, 9),
+                new Windows.Foundation.Point(0, 2),
+                new Windows.Foundation.Point(2, 9),
+                new Windows.Foundation.Point(0, 16)
             },
             Fill = accent
-        });
-        crawler.Children.Add(new Rectangle
+        };
+        AutomationProperties.SetAccessibilityView(tail, AccessibilityView.Raw);
+        fish.Children.Add(tail);
+        var body = new Ellipse
+        {
+            Width = 18,
+            Height = 11,
+            Fill = accent
+        };
+        Canvas.SetLeft(body, 6);
+        Canvas.SetTop(body, 3.5);
+        AutomationProperties.SetAccessibilityView(body, AccessibilityView.Raw);
+        fish.Children.Add(body);
+        var fin = new Polygon
+        {
+            Points = new PointCollection
+            {
+                new Windows.Foundation.Point(11, 5),
+                new Windows.Foundation.Point(15, 0),
+                new Windows.Foundation.Point(18, 5)
+            },
+            Fill = accent,
+            Opacity = 0.85
+        };
+        AutomationProperties.SetAccessibilityView(fin, AccessibilityView.Raw);
+        fish.Children.Add(fin);
+        var eye = new Ellipse
         {
             Width = 3,
             Height = 3,
             Fill = CreateBrush(0xFF, 0x0B, 0x11, 0x1A)
-        });
-        Canvas.SetLeft(crawler.Children[1], 15);
-        Canvas.SetTop(crawler.Children[1], 6);
-        canvas.Children.Add(crawler);
-        Canvas.SetTop(crawler, 1);
+        };
+        Canvas.SetLeft(eye, 19);
+        Canvas.SetTop(eye, 6);
+        AutomationProperties.SetAccessibilityView(eye, AccessibilityView.Raw);
+        fish.Children.Add(eye);
+        canvas.Children.Add(fish);
+        Canvas.SetTop(fish, 1);
+        StartFishIdleAnimation(tail);
 
-        var view = new QuotaRailView(canvas, crawler, railWidth, crawlerWidth);
+        var view = new QuotaRailView(canvas, fish, railWidth, fishWidth);
         view.Update(quotaWindow);
         return view;
     }
@@ -403,6 +439,47 @@ public sealed partial class MainWindow : Window
     private static Brush CreateBrush(byte alpha, byte red, byte green, byte blue) =>
         new SolidColorBrush(Color.FromArgb(alpha, red, green, blue));
 
+    private static Brush GetPopupBrush(string resourceKey) =>
+        (Brush)Application.Current.Resources[resourceKey];
+
+    private static void StartFishIdleAnimation(Polygon tail)
+    {
+        if (!FishAnimationSettings.ShouldAnimate(SystemAnimationsEnabled()))
+        {
+            return;
+        }
+
+        var transform = new CompositeTransform();
+        tail.RenderTransform = transform;
+        tail.RenderTransformOrigin = new Windows.Foundation.Point(1, 0.5);
+        var animation = new DoubleAnimation
+        {
+            From = -7,
+            To = 7,
+            Duration = TimeSpan.FromMilliseconds(900),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EnableDependentAnimation = true
+        };
+        Storyboard.SetTarget(animation, transform);
+        Storyboard.SetTargetProperty(animation, "Rotation");
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(animation);
+        storyboard.Begin();
+    }
+
+    private static bool SystemAnimationsEnabled()
+    {
+        try
+        {
+            return new UISettings().AnimationsEnabled;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static ActivitySectionView CreateActivitySection(IReadOnlyList<PopupActivityDisplayState> activityRows)
     {
         var stack = new StackPanel { Spacing = 6 };
@@ -410,6 +487,7 @@ public sealed partial class MainWindow : Window
         {
             Text = "Additional activity",
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = PopupTextPrimaryBrush,
             Margin = new Thickness(0, 4, 0, 0)
         });
 
@@ -437,6 +515,7 @@ public sealed partial class MainWindow : Window
         var label = new TextBlock
         {
             Text = labelText,
+            Foreground = PopupTextPrimaryBrush,
             TextWrapping = TextWrapping.WrapWholeWords
         };
         grid.Children.Add(label);
@@ -445,6 +524,7 @@ public sealed partial class MainWindow : Window
         {
             Text = activity.ValueText,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = PopupTextPrimaryBrush,
             TextAlignment = TextAlignment.Right,
             TextWrapping = TextWrapping.NoWrap
         };
@@ -458,8 +538,7 @@ public sealed partial class MainWindow : Window
         new TextBlock
         {
             Text = footerText,
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
-                "TextFillColorSecondaryBrush"],
+            Foreground = PopupTextSecondaryBrush,
             FontSize = 12,
             Margin = new Thickness(0, 4, 0, 0),
             TextWrapping = TextWrapping.WrapWholeWords
