@@ -95,7 +95,7 @@ public sealed class NotificationAreaCallbackDecoderTests
         var baseDirectory = Path.Combine("TokenFish", "out");
         var path = NotificationAreaIconPath.Resolve(baseDirectory);
 
-        Assert.Equal(Path.Combine(baseDirectory, "Assets", "AppIcon.ico"), path);
+        Assert.Equal(Path.Combine(baseDirectory, "Assets", "TrayIcon.ico"), path);
     }
 
     [Fact]
@@ -105,8 +105,21 @@ public sealed class NotificationAreaCallbackDecoderTests
 
         var path = NotificationAreaIconPath.Resolve(baseDirectory);
 
-        Assert.Equal(Path.Combine(baseDirectory, "Assets", "AppIcon.ico"), path);
+        Assert.Equal(Path.Combine(baseDirectory, "Assets", "TrayIcon.ico"), path);
         Assert.False(File.Exists(path));
+    }
+
+    [Fact]
+    public void TrayAndApplicationIconPathsAreDistinct()
+    {
+        var baseDirectory = Path.Combine("TokenFish", "publish");
+
+        var trayIconPath = NotificationAreaIconPath.Resolve(baseDirectory);
+        var applicationIconPath = ApplicationIconPath.ResolveWindowIcon(baseDirectory);
+
+        Assert.NotEqual(applicationIconPath, trayIconPath);
+        Assert.EndsWith(Path.Combine("Assets", "TrayIcon.ico"), trayIconPath);
+        Assert.EndsWith(Path.Combine("Assets", "AppIcon.ico"), applicationIconPath);
     }
 
     private static nint Version4(uint callback, uint iconId = IconId) =>
