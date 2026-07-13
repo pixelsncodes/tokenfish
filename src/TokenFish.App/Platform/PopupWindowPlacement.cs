@@ -22,10 +22,26 @@ internal static class PopupWindowPlacement
         presenter.IsMinimizable = configuration.IsMinimizable;
 
         var handle = WindowNative.GetWindowHandle(window);
+        RemoveDwmBorder(handle);
         var extendedStyle = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GwlExStyle);
         extendedStyle &= ~NativeMethods.WsExAppWindow;
         extendedStyle |= NativeMethods.WsExToolWindow;
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GwlExStyle, extendedStyle);
+    }
+
+    private static void RemoveDwmBorder(nint handle)
+    {
+        if (handle == 0)
+        {
+            return;
+        }
+
+        var borderColor = NativeMethods.DwmColorNone;
+        _ = NativeMethods.DwmSetWindowAttribute(
+            handle,
+            NativeMethods.DwmwaBorderColor,
+            ref borderColor,
+            (uint)Marshal.SizeOf<uint>());
     }
 
     public static void PositionBesideIcon(
@@ -92,6 +108,15 @@ internal static class PopupWindowPlacement
         public const int GwlExStyle = -20;
         public const nint WsExAppWindow = 0x00040000;
         public const nint WsExToolWindow = 0x00000080;
+        public const uint DwmwaBorderColor = 34;
+        public const uint DwmColorNone = 0xFFFFFFFE;
+
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmSetWindowAttribute(
+            nint hwnd,
+            uint attribute,
+            ref uint value,
+            uint valueSize);
 
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
         public static extern nint GetWindowLongPtr(nint hWnd, int index);
