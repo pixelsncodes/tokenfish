@@ -1,11 +1,10 @@
-using TokenFish.Core.Providers;
-
 namespace TokenFish.Infrastructure;
 
 public sealed class NotificationAreaController : IDisposable
 {
     private readonly INotificationAreaIcon _icon;
     private readonly IApplicationRuntimeHost _runtimeHost;
+    private readonly ManualRefreshCommand _manualRefreshCommand;
     private readonly Func<Task> _toggleWindowAsync;
     private readonly Func<Task> _openSettingsAsync;
     private readonly Func<Task> _exitAsync;
@@ -13,34 +12,34 @@ public sealed class NotificationAreaController : IDisposable
 
     private bool _initialized;
     private bool _shutdownStarted;
-    private ProviderRefreshStatus _refreshStatus;
-    private bool _refreshInProgress;
     private bool _disposed;
 
     public NotificationAreaController(
         INotificationAreaIcon icon,
         IApplicationRuntimeHost runtimeHost,
+        ManualRefreshCommand manualRefreshCommand,
         Func<Task> toggleWindowAsync,
         Func<Task> openSettingsAsync,
         Func<Task> exitAsync)
     {
         ArgumentNullException.ThrowIfNull(icon);
         ArgumentNullException.ThrowIfNull(runtimeHost);
+        ArgumentNullException.ThrowIfNull(manualRefreshCommand);
         ArgumentNullException.ThrowIfNull(toggleWindowAsync);
         ArgumentNullException.ThrowIfNull(openSettingsAsync);
         ArgumentNullException.ThrowIfNull(exitAsync);
 
         _icon = icon;
         _runtimeHost = runtimeHost;
+        _manualRefreshCommand = manualRefreshCommand;
         _toggleWindowAsync = toggleWindowAsync;
         _openSettingsAsync = openSettingsAsync;
         _exitAsync = exitAsync;
-        _refreshStatus = runtimeHost.RefreshStatus;
 
         _icon.CommandRequested += OnCommandRequested;
         _icon.ShellFaulted += OnShellFaulted;
-        _runtimeHost.RefreshStatusChanged += OnRefreshStatusChanged;
-        UpdateRefreshCommandAvailability();
+        _manualRefreshCommand.StateChanged += OnRefreshCommandStateChanged;
+        UpdateRefreshCommandAvailability(_manualRefreshCommand.State);
     }
 
     public void Initialize()
@@ -88,7 +87,7 @@ public sealed class NotificationAreaController : IDisposable
 
         _icon.CommandRequested -= OnCommandRequested;
         _icon.ShellFaulted -= OnShellFaulted;
-        _runtimeHost.RefreshStatusChanged -= OnRefreshStatusChanged;
+        _manualRefreshCommand.StateChanged -= OnRefreshCommandStateChanged;
         _icon.Dispose();
     }
 
@@ -112,7 +111,13 @@ public sealed class NotificationAreaController : IDisposable
                     await _toggleWindowAsync().ConfigureAwait(false);
                     break;
                 case NotificationAreaCommand.Refresh:
-                    await RefreshAsync().ConfigureAwait(false);
+                    if (CommandsAreClosed())
+                    {
+                        return;
+                    }
+
+                    await _manualRefreshCommand.RequestAsync(CancellationToken.None)
+                        .ConfigureAwait(false);
                     break;
                 case NotificationAreaCommand.Settings:
                     if (CommandsAreClosed())
@@ -135,38 +140,6 @@ public sealed class NotificationAreaController : IDisposable
             {
                 _runtimeHost.ReportShellFault();
             }
-        }
-    }
-
-    private async Task RefreshAsync()
-    {
-        lock (_sync)
-        {
-            if (_disposed ||
-                _shutdownStarted ||
-                _refreshInProgress ||
-                _refreshStatus.IsRefreshActive)
-            {
-                return;
-            }
-
-            _refreshInProgress = true;
-        }
-
-        UpdateRefreshCommandAvailability();
-
-        try
-        {
-            await _runtimeHost.RefreshAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-        finally
-        {
-            lock (_sync)
-            {
-                _refreshInProgress = false;
-            }
-
-            UpdateRefreshCommandAvailability();
         }
     }
 
@@ -201,17 +174,10 @@ public sealed class NotificationAreaController : IDisposable
         }
     }
 
-    private void OnRefreshStatusChanged(ProviderRefreshStatus status)
-    {
-        lock (_sync)
-        {
-            _refreshStatus = status;
-        }
+    private void OnRefreshCommandStateChanged(ManualRefreshCommandState state) =>
+        UpdateRefreshCommandAvailability(state);
 
-        UpdateRefreshCommandAvailability();
-    }
-
-    private void UpdateRefreshCommandAvailability()
+    private void UpdateRefreshCommandAvailability(ManualRefreshCommandState commandState)
     {
         NotificationAreaRefreshCommandState state;
         lock (_sync)
@@ -221,9 +187,9 @@ public sealed class NotificationAreaController : IDisposable
                 return;
             }
 
-            state = _refreshInProgress || _refreshStatus.IsRefreshActive
-                ? NotificationAreaRefreshCommandState.Updating
-                : NotificationAreaRefreshCommandState.Available;
+            state = commandState.IsEnabled
+                ? NotificationAreaRefreshCommandState.Available
+                : NotificationAreaRefreshCommandState.Updating;
         }
 
         _icon.SetRefreshCommandState(state);

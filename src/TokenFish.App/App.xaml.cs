@@ -14,6 +14,7 @@ public partial class App : Application
     private MainWindow? _popupWindow;
     private readonly LocalAppSettingsStore _settingsStore;
     private readonly TokenFishApplicationRuntimeHost _runtimeHost;
+    private readonly ManualRefreshCommand _manualRefreshCommand;
     private NotificationAreaController? _notificationAreaController;
     private TrayPopupController? _popupController;
     private SettingsWindowCoordinator? _settingsWindowCoordinator;
@@ -39,6 +40,7 @@ public partial class App : Application
         _runtimeHost = new TokenFishApplicationRuntimeHost(
             _settingsStore,
             GetClientVersion());
+        _manualRefreshCommand = new ManualRefreshCommand(_runtimeHost);
     }
 
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
@@ -62,6 +64,7 @@ public partial class App : Application
         _notificationAreaController = new NotificationAreaController(
             icon,
             _runtimeHost,
+            _manualRefreshCommand,
             () => _popupController?.ToggleAsync(CancellationToken.None) ?? Task.CompletedTask,
             OpenSettingsAsync,
             ExitAsync);
@@ -96,6 +99,7 @@ public partial class App : Application
             _relaunchActivationController?.Dispose();
             _popupController?.Dispose();
             _notificationAreaController?.Dispose();
+            _manualRefreshCommand.Dispose();
         }
 
         await _runtimeHost.StopAsync(CancellationToken.None);
@@ -178,6 +182,7 @@ public partial class App : Application
             _relaunchActivationController?.Dispose();
             _popupController?.Dispose();
             _notificationAreaController?.Dispose();
+            _manualRefreshCommand.Dispose();
             return;
         }
 
@@ -190,6 +195,7 @@ public partial class App : Application
         _relaunchActivationController?.Dispose();
         _popupController?.Dispose();
         _notificationAreaController?.Dispose();
+        _manualRefreshCommand.Dispose();
         _popupWindow?.AllowClose();
         _window.Closed -= OnWindowClosed;
         _window.Close();

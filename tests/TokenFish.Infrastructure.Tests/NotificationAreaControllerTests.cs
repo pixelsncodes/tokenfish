@@ -291,13 +291,17 @@ public sealed class NotificationAreaControllerTests
         RecordingRuntimeHost? host = null,
         Func<Task>? toggleWindowAsync = null,
         Func<Task>? openSettingsAsync = null,
-        Func<Task>? exitAsync = null) =>
-        new(
+        Func<Task>? exitAsync = null)
+    {
+        var runtimeHost = host ?? new RecordingRuntimeHost();
+        return new NotificationAreaController(
             icon ?? new RecordingNotificationAreaIcon(),
-            host ?? new RecordingRuntimeHost(),
+            runtimeHost,
+            new ManualRefreshCommand(runtimeHost),
             toggleWindowAsync ?? (() => Task.CompletedTask),
             openSettingsAsync ?? (() => Task.CompletedTask),
             exitAsync ?? (() => Task.CompletedTask));
+    }
 
     private static async Task WaitForRefreshCommandStateAsync(
         RecordingNotificationAreaIcon icon,
