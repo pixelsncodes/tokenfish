@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="TokenFish.App.OnboardingWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="TokenFish Setup">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid x:Name="RootGrid" Padding="36" Background="#171A20" RowSpacing="18">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <StackPanel Spacing="6">
+                <TextBlock Text="TOKENFISH" Foreground="#F4EA2A" FontWeight="SemiBold" />
+                <TextBlock x:Name="StepTextBlock" Foreground="#B4C0D0" AutomationProperties.Name="Setup progress" />
+            </StackPanel>
+            <StackPanel Grid.Row="1" Spacing="16">
+                <TextBlock x:Name="TitleTextBlock" FontSize="28" FontWeight="SemiBold" Foreground="#E7EDF6" />
+                <TextBlock x:Name="DescriptionTextBlock" TextWrapping="Wrap" Foreground="#E7EDF6" />
+                <StackPanel x:Name="ProviderSelectionPanel" Spacing="8">
+                    <CheckBox x:Name="ClaudeCheckBox" Content="Claude" Foreground="#FF8B78" />
+                    <CheckBox x:Name="CodexCheckBox" Content="Codex" Foreground="#4AD1C0" />
+                </StackPanel>
+                <StackPanel x:Name="RuntimePanel" Spacing="8">
+                    <ComboBox x:Name="RuntimeModeComboBox" SelectionChanged="OnRuntimeModeChanged">
+                        <ComboBoxItem Content="Native Windows" Tag="NativeWindows" />
+                        <ComboBoxItem Content="WSL direct" Tag="Wsl" />
+                        <ComboBoxItem Content="WSL login shell" Tag="WslLoginShell" />
+                    </ComboBox>
+                    <TextBox x:Name="WslDistributionTextBox" Header="Optional WSL distribution" />
+                </StackPanel>
+                <StackPanel x:Name="ClaudePanel" Spacing="8">
+                    <TextBlock Text="Copy this status-line snippet, merge it into Claude Code settings, use Claude Code normally, then return here to recheck." TextWrapping="Wrap" />
+                    <TextBox x:Name="ClaudeSnippetTextBox" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="100" />
+                    <Button Content="Copy" Click="OnCopyClicked" HorizontalAlignment="Left" />
+                    <TextBlock x:Name="CopyStatusTextBlock" AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+                <TextBlock x:Name="StatusTextBlock" Foreground="#FFB4AB" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button x:Name="NotNowButton" Content="Not now" Click="OnNotNowClicked" />
+                <Button x:Name="BackButton" Content="Back" Click="OnBackClicked" />
+                <Button x:Name="ContinueButton" Content="Continue" Click="OnContinueClicked" />
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Window>
