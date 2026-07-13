@@ -9,6 +9,7 @@ public sealed class AppSettingsTests
     {
         var settings = new AppSettings();
 
+        Assert.False(settings.IsOnboardingCompleted);
         Assert.Equal(ProviderSelectionMode.CodexOnly, settings.ProviderSelectionMode);
         Assert.Equal(ThemeMode.Minimal, settings.ThemeMode);
         Assert.Equal(CodexRuntimeMode.WslLoginShell, settings.CodexRuntimeMode);

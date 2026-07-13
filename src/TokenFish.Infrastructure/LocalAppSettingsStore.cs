@@ -156,6 +156,7 @@ public sealed class LocalAppSettingsStore : IAppSettingsStore
         new()
         {
             SchemaVersion = CurrentSchemaVersion,
+            IsOnboardingCompleted = settings.IsOnboardingCompleted,
             ProviderSelectionMode = settings.ProviderSelectionMode.ToString(),
             ThemeMode = settings.ThemeMode.ToString(),
             CodexRuntimeMode = settings.CodexRuntimeMode.ToString(),
@@ -187,6 +188,7 @@ public sealed class LocalAppSettingsStore : IAppSettingsStore
 
         var candidateSettings = new AppSettings
         {
+            IsOnboardingCompleted = persistedSettings.IsOnboardingCompleted ?? true,
             ProviderSelectionMode = providerSelectionMode,
             ThemeMode = themeMode,
             CodexRuntimeMode = codexRuntimeMode,
@@ -230,6 +232,8 @@ public sealed class LocalAppSettingsStore : IAppSettingsStore
 internal sealed record PersistedAppSettings
 {
     public int SchemaVersion { get; init; }
+
+    public bool? IsOnboardingCompleted { get; init; }
 
     public string? ProviderSelectionMode { get; init; }
 

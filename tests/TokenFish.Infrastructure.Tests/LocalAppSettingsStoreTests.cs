@@ -45,6 +45,53 @@ public sealed class LocalAppSettingsStoreTests
     }
 
     [Fact]
+    public async Task LegacySchemaOneSettingsWithoutOnboardingCompletionAreCompleted()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var store = CreateStore(directory);
+        await WriteSettingsJsonAsync(
+            store.SettingsFilePath,
+            """
+            {
+              "SchemaVersion": 1,
+              "ProviderSelectionMode": "CodexOnly",
+              "ThemeMode": "Minimal",
+              "CodexRuntimeMode": "WslLoginShell",
+              "CodexWslDistributionName": null
+            }
+            """);
+
+        var settings = await store.LoadAsync(CancellationToken.None);
+
+        Assert.True(settings.IsOnboardingCompleted);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExplicitOnboardingCompletionValueIsRespected(bool isOnboardingCompleted)
+    {
+        using var directory = TemporaryDirectory.Create();
+        var store = CreateStore(directory);
+        await WriteSettingsJsonAsync(
+            store.SettingsFilePath,
+            $$"""
+            {
+              "SchemaVersion": 1,
+              "IsOnboardingCompleted": {{isOnboardingCompleted.ToString().ToLowerInvariant()}},
+              "ProviderSelectionMode": "CodexOnly",
+              "ThemeMode": "Minimal",
+              "CodexRuntimeMode": "WslLoginShell",
+              "CodexWslDistributionName": null
+            }
+            """);
+
+        var settings = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(isOnboardingCompleted, settings.IsOnboardingCompleted);
+    }
+
+    [Fact]
     public async Task ValidAllowlistedSettingsRoundTrip()
     {
         using var directory = TemporaryDirectory.Create();
@@ -54,13 +101,30 @@ public sealed class LocalAppSettingsStoreTests
             ProviderSelectionMode = ProviderSelectionMode.CodexOnly,
             ThemeMode = ThemeMode.Arcade,
             CodexRuntimeMode = CodexRuntimeMode.Wsl,
-            CodexWslDistributionName = "Ubuntu-24.04"
+            CodexWslDistributionName = "Ubuntu-24.04",
+            IsOnboardingCompleted = true
         };
 
         await store.SaveAsync(expected, CancellationToken.None);
         var loaded = await store.LoadAsync(CancellationToken.None);
 
         Assert.Equal(expected, loaded);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OnboardingCompletionRoundTrips(bool isOnboardingCompleted)
+    {
+        using var directory = TemporaryDirectory.Create();
+        var store = CreateStore(directory);
+
+        await store.SaveAsync(
+            new AppSettings { IsOnboardingCompleted = isOnboardingCompleted },
+            CancellationToken.None);
+        var settings = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(isOnboardingCompleted, settings.IsOnboardingCompleted);
     }
 
     [Fact]
@@ -82,6 +146,7 @@ public sealed class LocalAppSettingsStoreTests
             [
                 "CodexRuntimeMode",
                 "CodexWslDistributionName",
+                "IsOnboardingCompleted",
                 "ProviderSelectionMode",
                 "SchemaVersion",
                 "ThemeMode"
@@ -364,7 +429,11 @@ public sealed class LocalAppSettingsStoreTests
         using var directory = TemporaryDirectory.Create();
         var store = CreateStore(directory);
         await store.SaveAsync(
-            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            new AppSettings
+            {
+                ProviderSelectionMode = ProviderSelectionMode.CodexOnly,
+                IsOnboardingCompleted = true
+            },
             CancellationToken.None);
         var before = await File.ReadAllTextAsync(store.SettingsFilePath);
         var failingStore = new LocalAppSettingsStore(
@@ -377,10 +446,15 @@ public sealed class LocalAppSettingsStoreTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             failingStore.SaveAsync(
-                new AppSettings { ProviderSelectionMode = ProviderSelectionMode.ClaudeOnly },
+                new AppSettings
+                {
+                    ProviderSelectionMode = ProviderSelectionMode.ClaudeOnly,
+                    IsOnboardingCompleted = false
+                },
                 CancellationToken.None));
 
         Assert.Equal(before, await File.ReadAllTextAsync(store.SettingsFilePath));
+        Assert.True((await store.LoadAsync(CancellationToken.None)).IsOnboardingCompleted);
         Assert.Empty(Directory.EnumerateFiles(directory.Path, "*.tmp"));
     }
 
@@ -411,6 +485,7 @@ public sealed class LocalAppSettingsStoreTests
     private static void AssertDefaultSettings(AppSettings settings)
     {
         Assert.Equal(new AppSettings(), settings);
+        Assert.False(settings.IsOnboardingCompleted);
         Assert.Equal(ProviderSelectionMode.CodexOnly, settings.ProviderSelectionMode);
     }
 
