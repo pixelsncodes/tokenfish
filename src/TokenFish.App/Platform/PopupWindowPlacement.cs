@@ -78,6 +78,14 @@ internal static class PopupWindowPlacement
         return NativeMethods.SetForegroundWindow(WindowNative.GetWindowHandle(window));
     }
 
+    public static void EnsureBorderlessAfterShowing(Window window)
+    {
+        if (window.AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.SetBorderAndTitleBar(hasBorder: false, hasTitleBar: false);
+        }
+    }
+
     public static bool IsForeground(Window window) =>
         NativeMethods.GetForegroundWindow() == WindowNative.GetWindowHandle(window);
 

@@ -39,6 +39,7 @@ internal sealed class MainWindowPopupShell : IPopupShell
             : (Windows.Graphics.RectInt32?)null;
         PositionBesideIcon(iconRectangle);
         _window.AppWindow.Show();
+        PopupWindowPlacement.EnsureBorderlessAfterShowing(_window);
         IsVisible = true;
         PopupWindowPlacement.BringToForeground(_window);
         return Task.CompletedTask;
