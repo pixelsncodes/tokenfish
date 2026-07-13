@@ -1,5 +1,6 @@
 using TokenFish.Core.Models;
 using TokenFish.Core.Providers;
+using TokenFish.Providers.Claude;
 using TokenFish.Providers.Codex;
 
 namespace TokenFish.Infrastructure;
@@ -17,14 +18,18 @@ public sealed class TokenFishApplicationServices : IApplicationRuntimeServices
     private TokenFishApplicationServices(
         ProviderRefreshLifecycle providerRefreshLifecycle,
         IProviderRuntimeSnapshotStore providerRuntimeSnapshotStore,
+        IProviderUsageCollector? claudeUsageCollector,
         IProviderUsageCollector? codexUsageCollector,
         IAsyncDisposable? codexRuntimeOwner)
     {
         _providerRefreshLifecycle = providerRefreshLifecycle;
         _providerRuntimeSnapshotStore = providerRuntimeSnapshotStore;
+        ClaudeUsageCollector = claudeUsageCollector;
         CodexUsageCollector = codexUsageCollector;
         _codexRuntimeOwner = codexRuntimeOwner;
     }
+
+    public IProviderUsageCollector? ClaudeUsageCollector { get; }
 
     public IProviderUsageCollector? CodexUsageCollector { get; }
 
@@ -71,7 +76,8 @@ public sealed class TokenFishApplicationServices : IApplicationRuntimeServices
         string clientVersion,
         TimeSpan providerRefreshInterval,
         TimeProvider timeProvider,
-        Func<CodexAppServerLaunchCommand, string, ProviderRuntime> createCodexRuntime)
+        Func<CodexAppServerLaunchCommand, string, ProviderRuntime> createCodexRuntime,
+        Func<TimeProvider, TimeSpan, IProviderUsageCollector>? createClaudeCollector = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentException.ThrowIfNullOrWhiteSpace(clientVersion);
@@ -79,12 +85,36 @@ public sealed class TokenFishApplicationServices : IApplicationRuntimeServices
         ArgumentNullException.ThrowIfNull(createCodexRuntime);
 
         var collectors = new List<IProviderUsageCollector>();
+        IProviderUsageCollector? claudeUsageCollector = null;
         IProviderUsageCollector? codexUsageCollector = null;
         IAsyncDisposable? codexRuntimeOwner = null;
+        var snapshotFreshnessThreshold = providerRefreshInterval * 2;
+
+        if (IsClaudeEnabled(settings.ProviderSelectionMode))
+        {
+            var createCollector = createClaudeCollector;
+            if (createCollector is null)
+            {
+                createCollector = static (providerTimeProvider, freshnessThreshold) =>
+                    ClaudeProviderUsageCollector.CreateDefault(
+                        providerTimeProvider,
+                        freshnessThreshold);
+            }
+
+            claudeUsageCollector = createCollector(timeProvider, snapshotFreshnessThreshold);
+            collectors.Add(claudeUsageCollector);
+        }
 
         if (!IsCodexEnabled(settings.ProviderSelectionMode))
         {
-            return CreateServices(settings, providerRefreshInterval, timeProvider, collectors, null, null);
+            return CreateServices(
+                settings,
+                providerRefreshInterval,
+                timeProvider,
+                collectors,
+                claudeUsageCollector,
+                null,
+                null);
         }
 
         var launchCommand = CodexAppServerLaunchCommandFactory.Create(settings);
@@ -98,6 +128,7 @@ public sealed class TokenFishApplicationServices : IApplicationRuntimeServices
             providerRefreshInterval,
             timeProvider,
             collectors,
+            claudeUsageCollector,
             codexUsageCollector,
             codexRuntimeOwner);
     }
@@ -107,6 +138,7 @@ public sealed class TokenFishApplicationServices : IApplicationRuntimeServices
         TimeSpan providerRefreshInterval,
         TimeProvider timeProvider,
         IEnumerable<IProviderUsageCollector> collectors,
+        IProviderUsageCollector? claudeUsageCollector,
         IProviderUsageCollector? codexUsageCollector,
         IAsyncDisposable? codexRuntimeOwner)
     {
@@ -124,6 +156,7 @@ public sealed class TokenFishApplicationServices : IApplicationRuntimeServices
         return new TokenFishApplicationServices(
             providerRefreshLifecycle,
             snapshotStore,
+            claudeUsageCollector,
             codexUsageCollector,
             codexRuntimeOwner);
     }
@@ -150,6 +183,16 @@ public sealed class TokenFishApplicationServices : IApplicationRuntimeServices
         {
             ProviderSelectionMode.CodexOnly or ProviderSelectionMode.Both => true,
             ProviderSelectionMode.ClaudeOnly => false,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(providerSelectionMode),
+                "Provider selection mode is not supported.")
+        };
+
+    private static bool IsClaudeEnabled(ProviderSelectionMode providerSelectionMode) =>
+        providerSelectionMode switch
+        {
+            ProviderSelectionMode.ClaudeOnly or ProviderSelectionMode.Both => true,
+            ProviderSelectionMode.CodexOnly => false,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(providerSelectionMode),
                 "Provider selection mode is not supported.")

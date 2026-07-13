@@ -82,52 +82,93 @@ public sealed class TokenFishApplicationServicesTests
     public async Task ClaudeOnlyCompositionDoesNotConstructCodexRuntime()
     {
         var factory = new RecordingCodexRuntimeFactory();
+        var claudeFactory = new RecordingClaudeCollectorFactory();
         var settings = new AppSettings
         {
             ProviderSelectionMode = ProviderSelectionMode.ClaudeOnly,
             CodexRuntimeMode = (CodexRuntimeMode)999
         };
 
-        await using var services = CreateServices(factory, settings);
+        await using var services = CreateServices(factory, settings, claudeFactory.Create);
 
         Assert.Null(services.CodexUsageCollector);
+        Assert.Same(claudeFactory.Collector, services.ClaudeUsageCollector);
         Assert.Equal(0, factory.CreateCallCount);
+        Assert.Equal(1, claudeFactory.CreateCallCount);
     }
 
     [Fact]
     public async Task ClaudeOnlyRefreshLifecycleDoesNotConstructCodexRuntime()
     {
         var factory = new RecordingCodexRuntimeFactory();
+        var claudeFactory = new RecordingClaudeCollectorFactory();
         var settings = new AppSettings
         {
             ProviderSelectionMode = ProviderSelectionMode.ClaudeOnly
         };
 
-        await using var services = CreateServices(factory, settings);
+        await using var services = CreateServices(factory, settings, claudeFactory.Create);
 
         _ = services.ProviderRefreshLifecycle;
 
         Assert.Null(services.CodexUsageCollector);
+        Assert.Same(claudeFactory.Collector, services.ClaudeUsageCollector);
         Assert.Equal(0, factory.CreateCallCount);
+        Assert.Equal(1, claudeFactory.CreateCallCount);
     }
 
     [Fact]
-    public async Task ExplicitBothStillFailsClearlyWhenClaudeCollectorIsAbsent()
+    public async Task CodexOnlyCompositionDoesNotConstructClaudeCollector()
     {
         var factory = new RecordingCodexRuntimeFactory();
+        var claudeFactory = new RecordingClaudeCollectorFactory();
+        var settings = new AppSettings
+        {
+            ProviderSelectionMode = ProviderSelectionMode.CodexOnly
+        };
+
+        await using var services = CreateServices(factory, settings, claudeFactory.Create);
+
+        Assert.Null(services.ClaudeUsageCollector);
+        Assert.Same(factory.Collector, services.CodexUsageCollector);
+        Assert.Equal(0, claudeFactory.CreateCallCount);
+        Assert.Equal(1, factory.CreateCallCount);
+    }
+
+    [Fact]
+    public async Task BothProviderCompositionConstructsBothProviders()
+    {
+        var factory = new RecordingCodexRuntimeFactory();
+        var claudeFactory = new RecordingClaudeCollectorFactory();
         var settings = new AppSettings
         {
             ProviderSelectionMode = ProviderSelectionMode.Both
         };
-        await using var services = CreateServices(factory, settings);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            services.ProviderRefreshLifecycle.RefreshAsync(CancellationToken.None));
+        await using var services = CreateServices(factory, settings, claudeFactory.Create);
 
-        Assert.Contains("No usage collector registered", exception.Message);
-        Assert.Contains("Claude", exception.Message);
+        Assert.Same(claudeFactory.Collector, services.ClaudeUsageCollector);
+        Assert.Same(factory.Collector, services.CodexUsageCollector);
+        Assert.Equal(1, claudeFactory.CreateCallCount);
         Assert.Equal(1, factory.CreateCallCount);
-        Assert.Equal(0, factory.Collector.CollectCallCount);
+    }
+
+    [Fact]
+    public async Task BothProviderRefreshInvokesBothProviders()
+    {
+        var factory = new RecordingCodexRuntimeFactory(throwOnCollect: false);
+        var claudeFactory = new RecordingClaudeCollectorFactory();
+        var settings = new AppSettings
+        {
+            ProviderSelectionMode = ProviderSelectionMode.Both
+        };
+        await using var services = CreateServices(factory, settings, claudeFactory.Create);
+
+        var snapshots = await services.ProviderRefreshLifecycle.RefreshAsync(CancellationToken.None);
+
+        Assert.Equal([ProviderKind.Claude, ProviderKind.Codex], snapshots.Select(snapshot => snapshot.Provider));
+        Assert.Equal(1, claudeFactory.Collector.CollectCallCount);
+        Assert.Equal(1, factory.Collector.CollectCallCount);
     }
 
     [Fact]
@@ -165,7 +206,10 @@ public sealed class TokenFishApplicationServicesTests
         var services = TokenFishApplicationServices.Create(
             new AppSettings { ProviderSelectionMode = ProviderSelectionMode.ClaudeOnly },
             "1.0.0",
-            (_, _) => throw new InvalidOperationException("should not construct Codex"));
+            TimeSpan.FromMinutes(1),
+            new ManualTimeProvider(),
+            (_, _) => throw new InvalidOperationException("should not construct Codex"),
+            (_, _) => new RecordingProviderUsageCollector(ProviderKind.Claude));
 
         await services.DisposeAsync();
         await services.DisposeAsync();
@@ -175,15 +219,28 @@ public sealed class TokenFishApplicationServicesTests
 
     private static TokenFishApplicationServices CreateServices(
         RecordingCodexRuntimeFactory factory,
-        AppSettings? settings = null) =>
+        AppSettings? settings = null,
+        Func<TimeProvider, TimeSpan, IProviderUsageCollector>? createClaudeCollector = null) =>
         TokenFishApplicationServices.Create(
             settings ?? new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
             "1.0.0",
-            factory.Create);
+            TimeSpan.FromMinutes(1),
+            new ManualTimeProvider(),
+            factory.Create,
+            createClaudeCollector);
 
     private sealed class RecordingCodexRuntimeFactory
     {
-        public RecordingProviderUsageCollector Collector { get; } = new();
+        public RecordingCodexRuntimeFactory(bool throwOnCollect = true)
+        {
+            Collector = new RecordingProviderUsageCollector(
+                ProviderKind.Codex,
+                throwOnCollect
+                    ? _ => throw new InvalidOperationException("collection is not expected in composition tests.")
+                    : null);
+        }
+
+        public RecordingProviderUsageCollector Collector { get; }
 
         public RecordingAsyncDisposable Owner { get; } = new();
 
@@ -207,14 +264,58 @@ public sealed class TokenFishApplicationServicesTests
 
     private sealed class RecordingProviderUsageCollector : IProviderUsageCollector
     {
+        private readonly Func<CancellationToken, Task<ProviderUsageSnapshot>> _collectAsync;
+
+        public RecordingProviderUsageCollector(
+            ProviderKind provider,
+            Func<CancellationToken, Task<ProviderUsageSnapshot>>? collectAsync = null)
+        {
+            Provider = provider;
+            _collectAsync = collectAsync ?? (_ => Task.FromResult(CreateSnapshot(provider)));
+        }
+
         public int CollectCallCount { get; private set; }
 
-        public ProviderKind Provider => ProviderKind.Codex;
+        public ProviderKind Provider { get; }
 
         public Task<ProviderUsageSnapshot> CollectAsync(CancellationToken cancellationToken)
         {
             CollectCallCount++;
-            throw new InvalidOperationException("collection is not expected in composition tests.");
+            return _collectAsync(cancellationToken);
+        }
+
+        private static ProviderUsageSnapshot CreateSnapshot(ProviderKind provider) =>
+            new(
+                provider,
+                ProviderConnectionState.Connected,
+                PercentageUsageMetric.Unavailable(
+                    DataAuthority.LocalProviderReported,
+                    DataFreshness.Unknown),
+                null,
+                TokenCountMetric.Unavailable(
+                    DataAuthority.TokenFishDerived,
+                    DataFreshness.Unknown),
+                TokenCountMetric.Unavailable(
+                    DataAuthority.TokenFishDerived,
+                    DataFreshness.Unknown),
+                DateTimeOffset.UnixEpoch);
+    }
+
+    private sealed class RecordingClaudeCollectorFactory
+    {
+        public RecordingProviderUsageCollector Collector { get; } =
+            new(ProviderKind.Claude);
+
+        public int CreateCallCount { get; private set; }
+
+        public IProviderUsageCollector Create(
+            TimeProvider timeProvider,
+            TimeSpan freshnessThreshold)
+        {
+            _ = timeProvider;
+            _ = freshnessThreshold;
+            CreateCallCount++;
+            return Collector;
         }
     }
 
@@ -227,5 +328,10 @@ public sealed class TokenFishApplicationServicesTests
             DisposeCallCount++;
             return ValueTask.CompletedTask;
         }
+    }
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch;
     }
 }

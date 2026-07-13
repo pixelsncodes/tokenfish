@@ -55,6 +55,41 @@ public sealed class TrayPopupDisplayStateAdapterTests
     }
 
     [Fact]
+    public void ClaudeQuotaWindowsDisplayWithoutFabricatedActivity()
+    {
+        var provider = SingleProvider(
+            CreateSnapshot(
+                ProviderKind.Claude,
+                sessionTokens: null,
+                weeklyTokens: null,
+                quotaWindows:
+                [
+                    ClaudeQuotaWindow("claude:status-line:five-hour", "5h", 24m),
+                    ClaudeQuotaWindow("claude:status-line:seven-day", "7d", 41m)
+                ],
+                activityMetrics: []),
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.ClaudeOnly });
+
+        Assert.Equal("Claude", provider.ProviderName);
+        Assert.Equal(["5h usage", "7d usage"], provider.QuotaWindows.Select(window => window.Label));
+        Assert.Equal(["24% used", "41% used"], provider.QuotaWindows.Select(window => window.PercentageText));
+        Assert.Empty(provider.ActivityRows);
+    }
+
+    [Fact]
+    public void DisabledClaudeSnapshotRemainsAbsentFromPopup()
+    {
+        var state = CreateState(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            [
+                CreateSnapshot(ProviderKind.Claude),
+                CreateSnapshot(ProviderKind.Codex)
+            ]);
+
+        Assert.DoesNotContain(state.Providers, provider => provider.Provider == ProviderKind.Claude);
+    }
+
+    [Fact]
     public void NoSnapshotMapsToWaitingConnectionWithoutUsageRows()
     {
         var state = CreateState(
@@ -715,8 +750,19 @@ public sealed class TrayPopupDisplayStateAdapterTests
         ProviderUsageSnapshot snapshot,
         TimeProvider? timeProvider = null)
     {
-        var state = CreateState(
+        return SingleProvider(
+            snapshot,
             new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
+            timeProvider);
+    }
+
+    private static ProviderCardDisplayState SingleProvider(
+        ProviderUsageSnapshot snapshot,
+        AppSettings settings,
+        TimeProvider? timeProvider = null)
+    {
+        var state = CreateState(
+            settings,
             [snapshot],
             ApplicationRuntimeStatus.Running,
             timeProvider);
@@ -812,6 +858,24 @@ public sealed class TrayPopupDisplayStateAdapterTests
             DataAuthority.LocalProviderReported,
             DataFreshness.Live,
             "account/rateLimits/read");
+
+    private static NormalizedQuotaWindow ClaudeQuotaWindow(
+        string windowId,
+        string displayLabel,
+        decimal usedPercentage) =>
+        new(
+            ProviderKind.Claude,
+            windowId,
+            displayLabel,
+            UsageMetricLabelOrigin.TokenFishDurationMapping,
+            usedPercentage,
+            new DateTimeOffset(2026, 7, 19, 22, 0, 0, TimeSpan.Zero),
+            displayLabel == "5h" ? TimeSpan.FromMinutes(300) : TimeSpan.FromMinutes(10_080),
+            UsageMetricAvailability.Available,
+            new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
+            DataAuthority.LocalProviderReported,
+            DataFreshness.Live,
+            "claude-status-line-bridge");
 
     private static NormalizedActivityMetric ActivityMetric(
         long value,

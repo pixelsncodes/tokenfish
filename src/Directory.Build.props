@@ -1,5 +1,5 @@
 <Project>
-  <PropertyGroup Condition="'$(Configuration)' == 'Release' and ('$(PublishProfile)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-x64')">
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(Platform)' == 'x64'">
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
     <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>

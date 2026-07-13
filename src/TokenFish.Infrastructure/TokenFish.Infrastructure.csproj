@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TokenFish.Core\TokenFish.Core.csproj" />
+    <ProjectReference Include="..\TokenFish.Providers.Claude\TokenFish.Providers.Claude.csproj" />
     <ProjectReference Include="..\TokenFish.Providers.Codex\TokenFish.Providers.Codex.csproj" />
   </ItemGroup>
 
