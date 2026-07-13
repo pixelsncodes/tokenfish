@@ -10,6 +10,7 @@ namespace TokenFish.App;
 public sealed partial class SettingsWindow : Window
 {
     private readonly CodexRuntimeSettingsPresenter _presenter;
+    private bool _isLoaded;
     private bool _updatingControls;
 
     public SettingsWindow(CodexRuntimeSettingsPresenter presenter)
@@ -27,6 +28,7 @@ public sealed partial class SettingsWindow : Window
     private async void OnRootGridLoaded(object sender, RoutedEventArgs args)
     {
         RootGrid.Loaded -= OnRootGridLoaded;
+        _isLoaded = true;
         ApplyState(_presenter.State);
         ApplyState(await _presenter.LoadAsync(CancellationToken.None));
     }
@@ -116,6 +118,24 @@ public sealed partial class SettingsWindow : Window
         {
             _updatingControls = false;
         }
+
+        ResizeToContent();
+    }
+
+    private void ResizeToContent()
+    {
+        if (!_isLoaded || RootGrid.XamlRoot is null)
+        {
+            return;
+        }
+
+        RootGrid.UpdateLayout();
+        RootGrid.Measure(new Windows.Foundation.Size(
+            SettingsWindowLayoutCalculator.WidthEffectivePixels,
+            double.PositiveInfinity));
+
+        var measuredHeight = Math.Ceiling(RootGrid.DesiredSize.Height);
+        AppWindow.Resize(SettingsWindowSizing.ToOuterPhysicalSize(this, measuredHeight));
     }
 
     private Brush GetStatusBorderBrush(CodexRuntimeSettingsStatusKind statusKind)

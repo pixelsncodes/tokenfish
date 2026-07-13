@@ -83,7 +83,8 @@
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
-                    CornerRadius="6">
+                    CornerRadius="6"
+                    Visibility="Collapsed">
                     <TextBlock
                         x:Name="StatusTextBlock"
                         AutomationProperties.LiveSetting="Polite"
