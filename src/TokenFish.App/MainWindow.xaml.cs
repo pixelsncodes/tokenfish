@@ -9,6 +9,8 @@ namespace TokenFish.App;
 
 public sealed partial class MainWindow : Window
 {
+    private readonly PopupDisplayStateUpdatePlanner _updatePlanner = new();
+    private readonly List<ProviderCardView> _providerCards = [];
     private bool _allowClose;
 
     public MainWindow()
@@ -26,6 +28,8 @@ public sealed partial class MainWindow : Window
     public event Action? PopupActivated;
 
     public event Action? PopupCloseRequested;
+
+    public event Action? ContentSizeInvalidated;
 
     public void AllowClose() => _allowClose = true;
 
@@ -81,6 +85,7 @@ public sealed partial class MainWindow : Window
     private void OnHeaderIconImageOpened(object sender, RoutedEventArgs args)
     {
         HeaderIcon.Visibility = Visibility.Visible;
+        ContentSizeInvalidated?.Invoke();
     }
 
     private void OnHeaderIconImageFailed(object sender, ExceptionRoutedEventArgs args)
@@ -91,24 +96,58 @@ public sealed partial class MainWindow : Window
 
     public void UpdateState(TrayPopupDisplayState state)
     {
-        StatusText.Text = state.StatusText;
-        StatusBannerText.Text = state.StatusText;
-        StatusBanner.Visibility = state.ApplicationState is
+        var plan = _updatePlanner.Plan(state);
+        SetTextIfChanged(StatusText, state.StatusText);
+        SetTextIfChanged(StatusBannerText, state.StatusText);
+        var statusBannerVisibility = state.ApplicationState is
             PopupApplicationDisplayState.StartupIssue or
             PopupApplicationDisplayState.RefreshIssue or
             PopupApplicationDisplayState.ShutdownIssue or
             PopupApplicationDisplayState.ShellIssue
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+        SetVisibilityIfChanged(StatusBanner, statusBannerVisibility);
 
-        ProvidersPanel.Children.Clear();
-        foreach (var provider in state.Providers)
+        if (plan.RebuildProviderCards || _providerCards.Count != state.Providers.Count)
         {
-            ProvidersPanel.Children.Add(CreateProviderCard(provider));
+            RebuildProviderCards(state.Providers);
+        }
+        else
+        {
+            for (var providerIndex = 0; providerIndex < state.Providers.Count; providerIndex++)
+            {
+                _providerCards[providerIndex].Update(state.Providers[providerIndex]);
+            }
+        }
+
+        if (plan.AffectsLayout)
+        {
+            ContentSizeInvalidated?.Invoke();
         }
     }
 
-    private static UIElement CreateProviderCard(ProviderCardDisplayState provider)
+    public double MeasurePreferredHeightEffectivePixels()
+    {
+        RootGrid.Measure(new Windows.Foundation.Size(
+            PopupWindowLayoutCalculator.WidthEffectivePixels,
+            double.PositiveInfinity));
+
+        return Math.Ceiling(RootGrid.DesiredSize.Height);
+    }
+
+    private void RebuildProviderCards(IReadOnlyList<ProviderCardDisplayState> providers)
+    {
+        ProvidersPanel.Children.Clear();
+        _providerCards.Clear();
+        foreach (var provider in providers)
+        {
+            var providerView = CreateProviderCard(provider);
+            _providerCards.Add(providerView);
+            ProvidersPanel.Children.Add(providerView.Root);
+        }
+    }
+
+    private static ProviderCardView CreateProviderCard(ProviderCardDisplayState provider)
     {
         var card = new Border
         {
@@ -124,50 +163,71 @@ public sealed partial class MainWindow : Window
         var stack = new StackPanel { Spacing = 8 };
         card.Child = stack;
 
-        stack.Children.Add(CreateProviderHeader(provider));
+        var header = CreateProviderHeader(provider);
+        stack.Children.Add(header.Root);
 
+        var quotaViews = new List<QuotaWindowView>(provider.QuotaWindows.Count);
         foreach (var quotaWindow in provider.QuotaWindows)
         {
-            stack.Children.Add(CreateQuotaWindowSection(quotaWindow));
+            var quotaView = CreateQuotaWindowSection(quotaWindow);
+            quotaViews.Add(quotaView);
+            stack.Children.Add(quotaView.Root);
         }
 
+        UIElement? activitySection = null;
+        IReadOnlyList<ActivityRowView> activityViews = [];
         if (provider.ActivityRows.Count > 0)
         {
-            stack.Children.Add(CreateActivitySection(provider.ActivityRows));
+            var activityView = CreateActivitySection(provider.ActivityRows);
+            activitySection = activityView.Root;
+            activityViews = activityView.ActivityRows;
+            stack.Children.Add(activitySection);
         }
 
+        TextBlock? emptyUsageMessage = null;
         if (provider.EmptyUsageMessage is not null)
         {
-            stack.Children.Add(new TextBlock
+            emptyUsageMessage = new TextBlock
             {
                 Text = provider.EmptyUsageMessage,
                 Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
                     "TextFillColorSecondaryBrush"],
                 TextWrapping = TextWrapping.WrapWholeWords
-            });
+            };
+            stack.Children.Add(emptyUsageMessage);
         }
 
+        TextBlock? footer = null;
         if (!string.IsNullOrWhiteSpace(provider.FooterText))
         {
-            stack.Children.Add(CreateFooter(provider.FooterText));
+            footer = CreateFooter(provider.FooterText);
+            stack.Children.Add(footer);
         }
 
-        return card;
+        return new ProviderCardView(
+            card,
+            provider,
+            header,
+            quotaViews,
+            activityViews,
+            emptyUsageMessage,
+            footer);
     }
 
-    private static UIElement CreateProviderHeader(ProviderCardDisplayState provider)
+    private static ProviderHeaderView CreateProviderHeader(ProviderCardDisplayState provider)
     {
         var grid = new Grid { ColumnSpacing = 12 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        grid.Children.Add(new TextBlock
+        var name = new TextBlock
         {
             Text = provider.ProviderName,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             FontSize = 15,
             TextTrimming = TextTrimming.CharacterEllipsis
-        });
+        };
+        grid.Children.Add(name);
 
         var connection = new TextBlock
         {
@@ -181,63 +241,77 @@ public sealed partial class MainWindow : Window
         Grid.SetColumn(connection, 1);
         grid.Children.Add(connection);
 
-        return grid;
+        return new ProviderHeaderView(grid, name, connection);
     }
 
-    private static UIElement CreateQuotaWindowSection(PopupQuotaWindowDisplayState quotaWindow)
+    private static QuotaWindowView CreateQuotaWindowSection(PopupQuotaWindowDisplayState quotaWindow)
     {
         var stack = new StackPanel { Spacing = 5 };
 
-        stack.Children.Add(new TextBlock
+        var label = new TextBlock
         {
             Text = quotaWindow.Label,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             TextWrapping = TextWrapping.WrapWholeWords
-        });
+        };
+        stack.Children.Add(label);
 
-        stack.Children.Add(new TextBlock
+        var percentageText = new TextBlock
         {
             Text = quotaWindow.PercentageText,
             FontSize = 20,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             TextWrapping = TextWrapping.NoWrap
-        });
+        };
+        stack.Children.Add(percentageText);
 
         var progress = new ProgressBar
         {
             Minimum = 0,
             Maximum = 100,
+            IsIndeterminate = false,
             Value = (double)quotaWindow.ProgressValue,
             Height = 5
         };
         AutomationProperties.SetName(progress, quotaWindow.ProgressAutomationName);
         stack.Children.Add(progress);
 
+        TextBlock? relativeReset = null;
         if (quotaWindow.RelativeResetText is not null)
         {
-            stack.Children.Add(new TextBlock
+            relativeReset = new TextBlock
             {
                 Text = quotaWindow.RelativeResetText,
                 Margin = new Thickness(0, 2, 0, 0),
                 TextWrapping = TextWrapping.WrapWholeWords
-            });
+            };
+            stack.Children.Add(relativeReset);
         }
 
+        TextBlock? exactReset = null;
         if (quotaWindow.ExactResetText is not null)
         {
-            stack.Children.Add(new TextBlock
+            exactReset = new TextBlock
             {
                 Text = quotaWindow.ExactResetText,
                 Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
                     "TextFillColorSecondaryBrush"],
                 TextWrapping = TextWrapping.WrapWholeWords
-            });
+            };
+            stack.Children.Add(exactReset);
         }
 
-        return stack;
+        return new QuotaWindowView(
+            stack,
+            quotaWindow,
+            label,
+            percentageText,
+            progress,
+            relativeReset,
+            exactReset);
     }
 
-    private static UIElement CreateActivitySection(IReadOnlyList<PopupActivityDisplayState> activityRows)
+    private static ActivitySectionView CreateActivitySection(IReadOnlyList<PopupActivityDisplayState> activityRows)
     {
         var stack = new StackPanel { Spacing = 6 };
         stack.Children.Add(new TextBlock
@@ -247,15 +321,18 @@ public sealed partial class MainWindow : Window
             Margin = new Thickness(0, 4, 0, 0)
         });
 
+        var rows = new List<ActivityRowView>(activityRows.Count);
         foreach (var activity in activityRows)
         {
-            stack.Children.Add(CreateActivityRow(activity));
+            var row = CreateActivityRow(activity);
+            rows.Add(row);
+            stack.Children.Add(row.Root);
         }
 
-        return stack;
+        return new ActivitySectionView(stack, rows);
     }
 
-    private static UIElement CreateActivityRow(PopupActivityDisplayState activity)
+    private static ActivityRowView CreateActivityRow(PopupActivityDisplayState activity)
     {
         var grid = new Grid { ColumnSpacing = 12 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -265,11 +342,12 @@ public sealed partial class MainWindow : Window
         var labelText = activity.IntervalText is null
             ? activity.Label
             : $"{activity.Label} · {activity.IntervalText}";
-        grid.Children.Add(new TextBlock
+        var label = new TextBlock
         {
             Text = labelText,
             TextWrapping = TextWrapping.WrapWholeWords
-        });
+        };
+        grid.Children.Add(label);
 
         var valueBlock = new TextBlock
         {
@@ -281,10 +359,10 @@ public sealed partial class MainWindow : Window
         Grid.SetColumn(valueBlock, 1);
         grid.Children.Add(valueBlock);
 
-        return grid;
+        return new ActivityRowView(grid, activity, label, valueBlock);
     }
 
-    private static UIElement CreateFooter(string footerText) =>
+    private static TextBlock CreateFooter(string footerText) =>
         new TextBlock
         {
             Text = footerText,
@@ -294,6 +372,212 @@ public sealed partial class MainWindow : Window
             Margin = new Thickness(0, 4, 0, 0),
             TextWrapping = TextWrapping.WrapWholeWords
         };
+
+    private static void SetTextIfChanged(TextBlock textBlock, string? text)
+    {
+        text ??= string.Empty;
+        if (textBlock.Text != text)
+        {
+            textBlock.Text = text;
+        }
+    }
+
+    private static void SetVisibilityIfChanged(UIElement element, Visibility visibility)
+    {
+        if (element.Visibility != visibility)
+        {
+            element.Visibility = visibility;
+        }
+    }
+
+    private sealed class ProviderCardView
+    {
+        public ProviderCardView(
+            Border root,
+            ProviderCardDisplayState state,
+            ProviderHeaderView header,
+            IReadOnlyList<QuotaWindowView> quotaWindows,
+            IReadOnlyList<ActivityRowView> activityRows,
+            TextBlock? emptyUsageMessage,
+            TextBlock? footer)
+        {
+            Root = root;
+            State = state;
+            Header = header;
+            QuotaWindows = quotaWindows;
+            ActivityRows = activityRows;
+            EmptyUsageMessage = emptyUsageMessage;
+            Footer = footer;
+        }
+
+        public Border Root { get; }
+
+        private ProviderCardDisplayState State { get; set; }
+
+        private ProviderHeaderView Header { get; }
+
+        private IReadOnlyList<QuotaWindowView> QuotaWindows { get; }
+
+        private IReadOnlyList<ActivityRowView> ActivityRows { get; }
+
+        private TextBlock? EmptyUsageMessage { get; }
+
+        private TextBlock? Footer { get; }
+
+        public void Update(ProviderCardDisplayState state)
+        {
+            Header.Update(state);
+
+            for (var quotaIndex = 0; quotaIndex < state.QuotaWindows.Count; quotaIndex++)
+            {
+                QuotaWindows[quotaIndex].Update(state.QuotaWindows[quotaIndex]);
+            }
+
+            for (var activityIndex = 0; activityIndex < state.ActivityRows.Count; activityIndex++)
+            {
+                ActivityRows[activityIndex].Update(state.ActivityRows[activityIndex]);
+            }
+
+            if (EmptyUsageMessage is not null)
+            {
+                SetTextIfChanged(EmptyUsageMessage, state.EmptyUsageMessage);
+            }
+
+            if (Footer is not null)
+            {
+                SetTextIfChanged(Footer, state.FooterText);
+            }
+
+            State = state;
+        }
+    }
+
+    private sealed class ProviderHeaderView
+    {
+        public ProviderHeaderView(Grid root, TextBlock name, TextBlock connection)
+        {
+            Root = root;
+            Name = name;
+            Connection = connection;
+        }
+
+        public Grid Root { get; }
+
+        private TextBlock Name { get; }
+
+        private TextBlock Connection { get; }
+
+        public void Update(ProviderCardDisplayState state)
+        {
+            SetTextIfChanged(Name, state.ProviderName);
+            SetTextIfChanged(Connection, state.ConnectionState);
+            AutomationProperties.SetName(Connection, $"Connection {state.ConnectionState}");
+        }
+    }
+
+    private sealed class QuotaWindowView
+    {
+        public QuotaWindowView(
+            StackPanel root,
+            PopupQuotaWindowDisplayState state,
+            TextBlock label,
+            TextBlock percentageText,
+            ProgressBar progress,
+            TextBlock? relativeReset,
+            TextBlock? exactReset)
+        {
+            Root = root;
+            State = state;
+            Label = label;
+            PercentageText = percentageText;
+            Progress = progress;
+            RelativeReset = relativeReset;
+            ExactReset = exactReset;
+        }
+
+        public StackPanel Root { get; }
+
+        private PopupQuotaWindowDisplayState State { get; set; }
+
+        private TextBlock Label { get; }
+
+        private TextBlock PercentageText { get; }
+
+        private ProgressBar Progress { get; }
+
+        private TextBlock? RelativeReset { get; }
+
+        private TextBlock? ExactReset { get; }
+
+        public void Update(PopupQuotaWindowDisplayState state)
+        {
+            SetTextIfChanged(Label, state.Label);
+            SetTextIfChanged(PercentageText, state.PercentageText);
+            if ((decimal)Progress.Value != state.ProgressValue)
+            {
+                Progress.Value = (double)state.ProgressValue;
+            }
+
+            if (State.ProgressAutomationName != state.ProgressAutomationName)
+            {
+                AutomationProperties.SetName(Progress, state.ProgressAutomationName);
+            }
+
+            if (RelativeReset is not null)
+            {
+                SetTextIfChanged(RelativeReset, state.RelativeResetText);
+            }
+
+            if (ExactReset is not null)
+            {
+                SetTextIfChanged(ExactReset, state.ExactResetText);
+            }
+
+            State = state;
+        }
+    }
+
+    private sealed record ActivitySectionView(
+        StackPanel Root,
+        IReadOnlyList<ActivityRowView> ActivityRows);
+
+    private sealed class ActivityRowView
+    {
+        public ActivityRowView(
+            Grid root,
+            PopupActivityDisplayState state,
+            TextBlock label,
+            TextBlock value)
+        {
+            Root = root;
+            State = state;
+            Label = label;
+            Value = value;
+        }
+
+        public Grid Root { get; }
+
+        private PopupActivityDisplayState State { get; set; }
+
+        private TextBlock Label { get; }
+
+        private TextBlock Value { get; }
+
+        public void Update(PopupActivityDisplayState state)
+        {
+            var labelText = state.IntervalText is null
+                ? state.Label
+                : $"{state.Label} · {state.IntervalText}";
+            SetTextIfChanged(Label, labelText);
+            SetTextIfChanged(Value, state.ValueText);
+            if (State.AutomationName != state.AutomationName)
+            {
+                AutomationProperties.SetName(Root, state.AutomationName);
+            }
+
+            State = state;
+        }
+    }
 
     private void OnActivated(object sender, WindowActivatedEventArgs args)
     {

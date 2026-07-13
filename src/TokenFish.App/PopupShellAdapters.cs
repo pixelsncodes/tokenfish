@@ -17,6 +17,7 @@ internal sealed class MainWindowPopupShell : IPopupShell
         _window.PopupActivated += OnPopupActivated;
         _window.PopupDeactivated += OnPopupDeactivated;
         _window.PopupCloseRequested += OnPopupCloseRequested;
+        _window.ContentSizeInvalidated += OnContentSizeInvalidated;
     }
 
     public bool IsVisible { get; private set; }
@@ -36,7 +37,7 @@ internal sealed class MainWindowPopupShell : IPopupShell
         var iconRectangle = _icon.TryGetIconRectangle(out var rectangle)
             ? rectangle
             : (Windows.Graphics.RectInt32?)null;
-        PopupWindowPlacement.PositionBesideIcon(_window, iconRectangle);
+        PositionBesideIcon(iconRectangle);
         _window.AppWindow.Show();
         IsVisible = true;
         PopupWindowPlacement.BringToForeground(_window);
@@ -57,6 +58,27 @@ internal sealed class MainWindowPopupShell : IPopupShell
     private void OnPopupDeactivated() => Deactivated?.Invoke();
 
     private void OnPopupCloseRequested() => CloseRequested?.Invoke();
+
+    private void OnContentSizeInvalidated()
+    {
+        if (!IsVisible)
+        {
+            return;
+        }
+
+        var iconRectangle = _icon.TryGetIconRectangle(out var rectangle)
+            ? rectangle
+            : (Windows.Graphics.RectInt32?)null;
+        PositionBesideIcon(iconRectangle);
+    }
+
+    private void PositionBesideIcon(Windows.Graphics.RectInt32? iconRectangle)
+    {
+        PopupWindowPlacement.PositionBesideIcon(
+            _window,
+            iconRectangle,
+            _window.MeasurePreferredHeightEffectivePixels());
+    }
 }
 
 internal sealed class DispatcherPopupActionQueue : IPopupActionQueue

@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using TokenFish.Infrastructure;
 using Windows.Graphics;
 using WinRT.Interop;
 
@@ -8,10 +9,6 @@ namespace TokenFish.App.Platform;
 
 internal static class PopupWindowPlacement
 {
-    private const int PopupWidthDip = 380;
-    private const int PopupMaxHeightDip = 640;
-    private const int PopupMarginPixels = 8;
-
     public static void Configure(Window window)
     {
         ArgumentNullException.ThrowIfNull(window);
@@ -30,46 +27,30 @@ internal static class PopupWindowPlacement
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GwlExStyle, extendedStyle);
     }
 
-    public static void PositionBesideIcon(Window window, RectInt32? iconRectangle)
+    public static void PositionBesideIcon(
+        Window window,
+        RectInt32? iconRectangle,
+        double measuredContentHeightEffectivePixels)
     {
         ArgumentNullException.ThrowIfNull(window);
 
         var handle = WindowNative.GetWindowHandle(window);
-        var dpi = NativeMethods.GetDpiForWindow(handle);
-        var popupWidth = ScaleDip(PopupWidthDip, dpi);
-        var popupHeight = Math.Min(
-            ScaleDip(PopupMaxHeightDip, dpi),
-            window.AppWindow.Size.Height > 0 ? window.AppWindow.Size.Height : ScaleDip(420, dpi));
+        var rasterizationScale = window.Content.XamlRoot?.RasterizationScale ??
+            NativeMethods.GetDpiForWindow(handle) / 96.0;
 
         var anchor = iconRectangle ?? GetFallbackAnchor(window);
         var displayArea = DisplayArea.GetFromPoint(
             new PointInt32(anchor.X, anchor.Y),
             DisplayAreaFallback.Nearest);
         var workArea = displayArea.WorkArea;
+        var layout = PopupWindowLayoutCalculator.Calculate(
+            new PopupPhysicalRect(anchor.X, anchor.Y, anchor.Width, anchor.Height),
+            new PopupPhysicalRect(workArea.X, workArea.Y, workArea.Width, workArea.Height),
+            rasterizationScale,
+            measuredContentHeightEffectivePixels);
 
-        var left = anchor.X + (anchor.Width / 2) - (popupWidth / 2);
-        var top = anchor.Y - popupHeight - PopupMarginPixels;
-
-        if (anchor.Y <= workArea.Y + PopupMarginPixels)
-        {
-            top = anchor.Y + anchor.Height + PopupMarginPixels;
-        }
-        else if (anchor.X <= workArea.X + PopupMarginPixels)
-        {
-            left = anchor.X + anchor.Width + PopupMarginPixels;
-            top = anchor.Y + (anchor.Height / 2) - (popupHeight / 2);
-        }
-        else if (anchor.X + anchor.Width >= workArea.X + workArea.Width - PopupMarginPixels)
-        {
-            left = anchor.X - popupWidth - PopupMarginPixels;
-            top = anchor.Y + (anchor.Height / 2) - (popupHeight / 2);
-        }
-
-        left = Clamp(left, workArea.X, workArea.X + workArea.Width - popupWidth);
-        top = Clamp(top, workArea.Y, workArea.Y + workArea.Height - popupHeight);
-
-        window.AppWindow.Resize(new SizeInt32(popupWidth, popupHeight));
-        window.AppWindow.Move(new PointInt32(left, top));
+        window.AppWindow.Resize(new SizeInt32(layout.Size.Width, layout.Size.Height));
+        window.AppWindow.Move(new PointInt32(layout.Position.X, layout.Position.Y));
     }
 
     public static bool BringToForeground(Window window)
@@ -90,12 +71,6 @@ internal static class PopupWindowPlacement
             24,
             24);
     }
-
-    private static int ScaleDip(int value, uint dpi) =>
-        (int)Math.Round(value * dpi / 96.0);
-
-    private static int Clamp(int value, int minimum, int maximum) =>
-        Math.Min(Math.Max(value, minimum), maximum);
 
     private static class NativeMethods
     {
