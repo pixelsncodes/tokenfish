@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TokenFish.Providers.Codex.T
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TokenFish.Infrastructure.Tests", "tests\TokenFish.Infrastructure.Tests\TokenFish.Infrastructure.Tests.csproj", "{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TokenFish.Providers.Claude.Tests", "tests\TokenFish.Providers.Claude.Tests\TokenFish.Providers.Claude.Tests.csproj", "{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -129,6 +131,18 @@ Global
 		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Release|x64.Build.0 = Release|Any CPU
 		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Release|x86.ActiveCfg = Release|Any CPU
 		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5}.Release|x86.Build.0 = Release|Any CPU
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}.Debug|x64.Build.0 = Debug|Any CPU
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}.Debug|x86.Build.0 = Debug|Any CPU
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}.Release|x64.ActiveCfg = Release|Any CPU
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}.Release|x64.Build.0 = Release|Any CPU
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}.Release|x86.ActiveCfg = Release|Any CPU
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -142,5 +156,6 @@ Global
 		{B1F0EA8C-DDEC-450E-9611-0611FD68F36B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{CD02BB7B-B77D-4822-A8EF-B2CEB98B42E4} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{0CB98F6E-125F-47F6-A56B-5B45F160BDE5} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{458B39A2-4CD4-4B74-B13D-D6D7C8F3D1A8} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal
