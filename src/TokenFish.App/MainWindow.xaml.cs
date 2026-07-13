@@ -160,7 +160,7 @@ public sealed partial class MainWindow : Window
         var accent = GetProviderAccent(provider.Provider);
         var card = new Border
         {
-            Padding = new Thickness(14, 12),
+            Padding = new Thickness(14, 12, 14, 12),
             CornerRadius = new CornerRadius(12),
             BorderThickness = new Thickness(1),
             BorderBrush = CreateBrush(0xFF, 0x29, 0x38, 0x4A),
@@ -244,7 +244,9 @@ public sealed partial class MainWindow : Window
             FontSize = 15,
             TextTrimming = TextTrimming.CharacterEllipsis
         };
-        AutomationProperties.SetHeadingLevel(name, AutomationHeadingLevel.Heading2);
+        AutomationProperties.SetHeadingLevel(
+            name,
+            Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
         nameRow.Children.Add(name);
         grid.Children.Add(nameRow);
 
