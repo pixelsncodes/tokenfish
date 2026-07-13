@@ -6,6 +6,22 @@ namespace TokenFish.Core.Tests;
 public sealed class ProviderRefreshLifecycleTests
 {
     [Fact]
+    public async Task InitialRefreshStatusIsNeverRefreshed()
+    {
+        var timeProvider = new ManualTimeProvider(
+            new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero));
+        var collector = new RecordingProviderUsageCollector(ProviderKind.Codex);
+
+        await using var lifecycle = CreateLifecycle(collector, timeProvider: timeProvider);
+
+        Assert.False(lifecycle.RefreshStatus.IsRefreshActive);
+        Assert.Null(lifecycle.RefreshStatus.LatestAttemptedAtUtc);
+        Assert.Null(lifecycle.RefreshStatus.LatestSucceededAtUtc);
+        Assert.Equal(ProviderRefreshOutcome.NeverRefreshed, lifecycle.RefreshStatus.Outcome);
+        Assert.Equal(0, lifecycle.RefreshStatus.Version);
+    }
+
+    [Fact]
     public void ConstructionPerformsNoRefresh()
     {
         var collector = new RecordingProviderUsageCollector(ProviderKind.Codex);
@@ -27,6 +43,28 @@ public sealed class ProviderRefreshLifecycleTests
     }
 
     [Fact]
+    public async Task SuccessfulStartupRefreshUpdatesStatusWithInjectedTime()
+    {
+        var timeProvider = new ManualTimeProvider(
+            new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero));
+        var collector = new RecordingProviderUsageCollector(ProviderKind.Codex);
+        await using var lifecycle = CreateLifecycle(collector, timeProvider: timeProvider);
+        var statuses = new List<ProviderRefreshStatus>();
+        lifecycle.RefreshStatusChanged += statuses.Add;
+
+        await lifecycle.StartAsync(CancellationToken.None);
+
+        Assert.Equal(2, statuses.Count);
+        Assert.True(statuses[0].IsRefreshActive);
+        Assert.Equal(ProviderRefreshOutcome.Refreshing, statuses[0].Outcome);
+        Assert.Equal(timeProvider.InitialUtcNow, statuses[0].LatestAttemptedAtUtc);
+        Assert.False(lifecycle.RefreshStatus.IsRefreshActive);
+        Assert.Equal(ProviderRefreshOutcome.Succeeded, lifecycle.RefreshStatus.Outcome);
+        Assert.Equal(timeProvider.InitialUtcNow, lifecycle.RefreshStatus.LatestSucceededAtUtc);
+        Assert.Equal(2, lifecycle.RefreshStatus.Version);
+    }
+
+    [Fact]
     public async Task ScheduledRefreshOccursUsingDeterministicDelay()
     {
         var collector = new RecordingProviderUsageCollector(ProviderKind.Codex);
@@ -38,6 +76,33 @@ public sealed class ProviderRefreshLifecycleTests
         await collector.WaitForCallCountAsync(2);
 
         Assert.Equal(2, collector.CallCount);
+    }
+
+    [Fact]
+    public async Task SuccessfulScheduledRefreshUpdatesAttemptAndSuccessTimes()
+    {
+        var timeProvider = new ManualTimeProvider(
+            new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero));
+        var collector = new RecordingProviderUsageCollector(ProviderKind.Codex);
+        var delay = new ManualRefreshDelay();
+        await using var lifecycle = CreateLifecycle(
+            collector,
+            delay: delay,
+            timeProvider: timeProvider);
+
+        await lifecycle.StartAsync(CancellationToken.None);
+        timeProvider.Advance(TimeSpan.FromMinutes(5));
+        await delay.CompleteNextAsync();
+        await collector.WaitForCallCountAsync(2);
+
+        Assert.Equal(
+            new DateTimeOffset(2026, 7, 12, 8, 5, 0, TimeSpan.Zero),
+            lifecycle.RefreshStatus.LatestAttemptedAtUtc);
+        Assert.Equal(
+            new DateTimeOffset(2026, 7, 12, 8, 5, 0, TimeSpan.Zero),
+            lifecycle.RefreshStatus.LatestSucceededAtUtc);
+        Assert.Equal(ProviderRefreshOutcome.Succeeded, lifecycle.RefreshStatus.Outcome);
+        Assert.Equal(4, lifecycle.RefreshStatus.Version);
     }
 
     [Fact]
@@ -60,6 +125,7 @@ public sealed class ProviderRefreshLifecycleTests
         await secondRefresh;
 
         Assert.Equal(1, collector.MaxConcurrentCalls);
+        Assert.Equal(ProviderRefreshOutcome.Succeeded, lifecycle.RefreshStatus.Outcome);
     }
 
     [Fact]
@@ -73,6 +139,125 @@ public sealed class ProviderRefreshLifecycleTests
         Assert.Single(snapshots);
         Assert.Equal(ProviderKind.Codex, snapshots[0].Provider);
         Assert.Equal(1, collector.CallCount);
+    }
+
+    [Fact]
+    public async Task SuccessfulManualRefreshUpdatesStatus()
+    {
+        var timeProvider = new ManualTimeProvider(
+            new DateTimeOffset(2026, 7, 12, 9, 0, 0, TimeSpan.Zero));
+        var collector = new RecordingProviderUsageCollector(ProviderKind.Codex);
+        await using var lifecycle = CreateLifecycle(collector, timeProvider: timeProvider);
+
+        await lifecycle.RefreshAsync(CancellationToken.None);
+
+        Assert.False(lifecycle.RefreshStatus.IsRefreshActive);
+        Assert.Equal(ProviderRefreshOutcome.Succeeded, lifecycle.RefreshStatus.Outcome);
+        Assert.Equal(timeProvider.InitialUtcNow, lifecycle.RefreshStatus.LatestAttemptedAtUtc);
+        Assert.Equal(timeProvider.InitialUtcNow, lifecycle.RefreshStatus.LatestSucceededAtUtc);
+    }
+
+    [Fact]
+    public async Task ExpectedRefreshFailureRecordsSafeFailedStatus()
+    {
+        var timeProvider = new ManualTimeProvider(
+            new DateTimeOffset(2026, 7, 12, 10, 0, 0, TimeSpan.Zero));
+        var collector = new RecordingProviderUsageCollector(
+            ProviderKind.Codex,
+            _ => Task.FromException<ProviderUsageSnapshot>(
+                new InvalidOperationException("synthetic secret C:\\Users\\pixel")));
+        await using var lifecycle = CreateLifecycle(collector, timeProvider: timeProvider);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            lifecycle.RefreshAsync(CancellationToken.None));
+
+        Assert.False(lifecycle.RefreshStatus.IsRefreshActive);
+        Assert.Equal(ProviderRefreshOutcome.Failed, lifecycle.RefreshStatus.Outcome);
+        Assert.Equal(timeProvider.InitialUtcNow, lifecycle.RefreshStatus.LatestAttemptedAtUtc);
+        Assert.Null(lifecycle.RefreshStatus.LatestSucceededAtUtc);
+        Assert.DoesNotContain("secret", lifecycle.RefreshStatus.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Users", lifecycle.RefreshStatus.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ShutdownCancellationDoesNotBecomeUserVisibleFailure()
+    {
+        var collector = new BlockingProviderUsageCollector(ProviderKind.Codex)
+        {
+            CompleteImmediately = true
+        };
+        await using var lifecycle = CreateLifecycle(collector);
+
+        await lifecycle.StartAsync(CancellationToken.None);
+        collector.CompleteImmediately = false;
+        var manualRefresh = lifecycle.RefreshAsync(CancellationToken.None);
+        await collector.WaitForCallCountAsync(2);
+
+        await lifecycle.StopAsync(CancellationToken.None);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await manualRefresh);
+
+        Assert.False(lifecycle.RefreshStatus.IsRefreshActive);
+        Assert.Equal(ProviderRefreshOutcome.Succeeded, lifecycle.RefreshStatus.Outcome);
+        Assert.NotNull(lifecycle.RefreshStatus.LatestSucceededAtUtc);
+    }
+
+    [Fact]
+    public async Task LastSuccessTimeSurvivesLaterFailure()
+    {
+        var timeProvider = new ManualTimeProvider(
+            new DateTimeOffset(2026, 7, 12, 11, 0, 0, TimeSpan.Zero));
+        var collector = new SequencedProviderUsageCollector(ProviderKind.Codex);
+        collector.Enqueue(_ => Task.FromResult(CreateSnapshot(ProviderKind.Codex)));
+        collector.Enqueue(_ => Task.FromException<ProviderUsageSnapshot>(
+            new InvalidOperationException("synthetic failure")));
+        await using var lifecycle = CreateLifecycle(collector, timeProvider: timeProvider);
+
+        await lifecycle.RefreshAsync(CancellationToken.None);
+        var succeededAt = lifecycle.RefreshStatus.LatestSucceededAtUtc;
+        timeProvider.Advance(TimeSpan.FromMinutes(1));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            lifecycle.RefreshAsync(CancellationToken.None));
+
+        Assert.Equal(ProviderRefreshOutcome.Failed, lifecycle.RefreshStatus.Outcome);
+        Assert.Equal(succeededAt, lifecycle.RefreshStatus.LatestSucceededAtUtc);
+        Assert.Equal(timeProvider.GetUtcNow(), lifecycle.RefreshStatus.LatestAttemptedAtUtc);
+    }
+
+    [Fact]
+    public async Task SnapshotStoreKeepsLastSuccessfulSnapshotDuringInProgressAndFailedRefresh()
+    {
+        var timeProvider = new ManualTimeProvider(
+            new DateTimeOffset(2026, 7, 12, 12, 0, 0, TimeSpan.Zero));
+        var snapshotStore = new InMemoryProviderRuntimeSnapshotStore(
+            timeProvider,
+            TimeSpan.FromMinutes(5));
+        var collector = new BlockingProviderUsageCollector(ProviderKind.Codex)
+        {
+            CompleteImmediately = true
+        };
+        await using var lifecycle = CreateLifecycle(
+            collector,
+            timeProvider: timeProvider,
+            snapshotStore: snapshotStore);
+
+        await lifecycle.RefreshAsync(CancellationToken.None);
+        Assert.True(snapshotStore.TryGetCurrent(ProviderKind.Codex, out var firstState));
+
+        collector.CompleteImmediately = false;
+        collector.FailNextOnComplete = true;
+        var failedRefresh = lifecycle.RefreshAsync(CancellationToken.None);
+        await collector.WaitForCallCountAsync(2);
+
+        Assert.True(lifecycle.RefreshStatus.IsRefreshActive);
+        Assert.True(snapshotStore.TryGetCurrent(ProviderKind.Codex, out var inProgressState));
+        Assert.Equal(firstState.Snapshot, inProgressState.Snapshot);
+
+        collector.CompleteNext();
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await failedRefresh);
+
+        Assert.True(snapshotStore.TryGetCurrent(ProviderKind.Codex, out var failedState));
+        Assert.Equal(firstState.Snapshot, failedState.Snapshot);
+        Assert.Equal(ProviderRefreshOutcome.Failed, lifecycle.RefreshStatus.Outcome);
     }
 
     [Fact]
@@ -263,13 +448,17 @@ public sealed class ProviderRefreshLifecycleTests
     private static ProviderRefreshLifecycle CreateLifecycle(
         IProviderUsageCollector collector,
         AppSettings? settings = null,
-        ManualRefreshDelay? delay = null) =>
-        CreateLifecycle([collector], settings, delay);
+        ManualRefreshDelay? delay = null,
+        TimeProvider? timeProvider = null,
+        IProviderRuntimeSnapshotStore? snapshotStore = null) =>
+        CreateLifecycle([collector], settings, delay, timeProvider, snapshotStore);
 
     private static ProviderRefreshLifecycle CreateLifecycle(
         IEnumerable<IProviderUsageCollector> collectors,
         AppSettings? settings = null,
-        ManualRefreshDelay? delay = null)
+        ManualRefreshDelay? delay = null,
+        TimeProvider? timeProvider = null,
+        IProviderRuntimeSnapshotStore? snapshotStore = null)
     {
         var refreshDelay = delay ?? new ManualRefreshDelay();
 
@@ -277,8 +466,27 @@ public sealed class ProviderRefreshLifecycleTests
             new ProviderUsageCollectionCoordinator(collectors),
             settings ?? new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly },
             TimeSpan.FromMinutes(5),
-            TimeProvider.System,
-            refreshDelay.DelayAsync);
+            timeProvider ?? TimeProvider.System,
+            refreshDelay.DelayAsync,
+            snapshotStore);
+    }
+
+    private sealed class SequencedProviderUsageCollector : IProviderUsageCollector
+    {
+        private readonly Queue<Func<CancellationToken, Task<ProviderUsageSnapshot>>> _callbacks = new();
+
+        public SequencedProviderUsageCollector(ProviderKind provider)
+        {
+            Provider = provider;
+        }
+
+        public ProviderKind Provider { get; }
+
+        public void Enqueue(Func<CancellationToken, Task<ProviderUsageSnapshot>> callback) =>
+            _callbacks.Enqueue(callback);
+
+        public Task<ProviderUsageSnapshot> CollectAsync(CancellationToken cancellationToken) =>
+            _callbacks.Dequeue()(cancellationToken);
     }
 
     private sealed class RecordingProviderUsageCollector : IProviderUsageCollector
@@ -335,6 +543,8 @@ public sealed class ProviderRefreshLifecycleTests
 
         public bool CompleteImmediately { get; set; }
 
+        public bool FailNextOnComplete { get; set; }
+
         public int CallCount { get; private set; }
 
         public int MaxConcurrentCalls { get; private set; }
@@ -362,6 +572,12 @@ public sealed class ProviderRefreshLifecycleTests
                     }
 
                     await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                if (FailNextOnComplete)
+                {
+                    FailNextOnComplete = false;
+                    throw new InvalidOperationException("synthetic refresh failure");
                 }
 
                 return CreateSnapshot(Provider);
@@ -457,4 +673,21 @@ public sealed class ProviderRefreshLifecycleTests
                 DataAuthority.TokenFishDerived,
                 DataFreshness.Cached),
             DateTimeOffset.UtcNow);
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private DateTimeOffset _utcNow;
+
+        public ManualTimeProvider(DateTimeOffset utcNow)
+        {
+            InitialUtcNow = utcNow.ToUniversalTime();
+            _utcNow = InitialUtcNow;
+        }
+
+        public DateTimeOffset InitialUtcNow { get; }
+
+        public override DateTimeOffset GetUtcNow() => _utcNow;
+
+        public void Advance(TimeSpan elapsed) => _utcNow += elapsed;
+    }
 }

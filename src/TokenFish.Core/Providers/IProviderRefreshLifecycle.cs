@@ -4,6 +4,10 @@ namespace TokenFish.Core.Providers;
 
 public interface IProviderRefreshLifecycle : IAsyncDisposable
 {
+    ProviderRefreshStatus RefreshStatus { get; }
+
+    event Action<ProviderRefreshStatus>? RefreshStatusChanged;
+
     Task Completion { get; }
 
     Task StartAsync(CancellationToken cancellationToken);

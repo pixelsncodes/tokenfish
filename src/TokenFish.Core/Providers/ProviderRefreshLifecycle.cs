@@ -21,6 +21,7 @@ public sealed class ProviderRefreshLifecycle : IProviderRefreshLifecycle
     private CancellationTokenSource? _scheduleCancellationTokenSource;
     private Task? _scheduleTask;
     private Task? _initialRefreshTask;
+    private ProviderRefreshStatus _refreshStatus = ProviderRefreshStatus.Initial;
     private bool _started;
     private bool _stopped;
     private bool _disposed;
@@ -67,6 +68,19 @@ public sealed class ProviderRefreshLifecycle : IProviderRefreshLifecycle
         _timeProvider = timeProvider;
         _delayAsync = delayAsync;
         _snapshotStore = snapshotStore;
+    }
+
+    public event Action<ProviderRefreshStatus>? RefreshStatusChanged;
+
+    public ProviderRefreshStatus RefreshStatus
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _refreshStatus;
+            }
+        }
     }
 
     public Task Completion
@@ -232,16 +246,100 @@ public sealed class ProviderRefreshLifecycle : IProviderRefreshLifecycle
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            SetRefreshStatus(CreateRefreshingStatus());
 
             var snapshots = await _coordinator.CollectAsync(_settings, cancellationToken)
                 .ConfigureAwait(false);
             _snapshotStore?.Store(snapshots);
+            SetRefreshStatus(CreateSucceededStatus());
 
             return snapshots;
+        }
+        catch (OperationCanceledException)
+            when (_shutdownCancellationTokenSource.IsCancellationRequested)
+        {
+            SetRefreshStatus(CreateCanceledShutdownStatus());
+            throw;
+        }
+        catch
+        {
+            SetRefreshStatus(CreateFailedStatus());
+            throw;
         }
         finally
         {
             _refreshGate.Release();
         }
+    }
+
+    private ProviderRefreshStatus CreateRefreshingStatus()
+    {
+        lock (_sync)
+        {
+            return new ProviderRefreshStatus(
+                IsRefreshActive: true,
+                LatestAttemptedAtUtc: _timeProvider.GetUtcNow().ToUniversalTime(),
+                LatestSucceededAtUtc: _refreshStatus.LatestSucceededAtUtc,
+                ProviderRefreshOutcome.Refreshing,
+                _refreshStatus.Version + 1);
+        }
+    }
+
+    private ProviderRefreshStatus CreateSucceededStatus()
+    {
+        lock (_sync)
+        {
+            var succeededAt = _timeProvider.GetUtcNow().ToUniversalTime();
+            return new ProviderRefreshStatus(
+                IsRefreshActive: false,
+                LatestAttemptedAtUtc: _refreshStatus.LatestAttemptedAtUtc,
+                LatestSucceededAtUtc: succeededAt,
+                ProviderRefreshOutcome.Succeeded,
+                _refreshStatus.Version + 1);
+        }
+    }
+
+    private ProviderRefreshStatus CreateFailedStatus()
+    {
+        lock (_sync)
+        {
+            return new ProviderRefreshStatus(
+                IsRefreshActive: false,
+                LatestAttemptedAtUtc: _refreshStatus.LatestAttemptedAtUtc,
+                LatestSucceededAtUtc: _refreshStatus.LatestSucceededAtUtc,
+                ProviderRefreshOutcome.Failed,
+                _refreshStatus.Version + 1);
+        }
+    }
+
+    private ProviderRefreshStatus CreateCanceledShutdownStatus()
+    {
+        lock (_sync)
+        {
+            var outcome = _refreshStatus.LatestSucceededAtUtc.HasValue
+                ? ProviderRefreshOutcome.Succeeded
+                : ProviderRefreshOutcome.NeverRefreshed;
+            return new ProviderRefreshStatus(
+                IsRefreshActive: false,
+                LatestAttemptedAtUtc: _refreshStatus.LatestAttemptedAtUtc,
+                LatestSucceededAtUtc: _refreshStatus.LatestSucceededAtUtc,
+                outcome,
+                _refreshStatus.Version + 1);
+        }
+    }
+
+    private void SetRefreshStatus(ProviderRefreshStatus status)
+    {
+        lock (_sync)
+        {
+            if (_refreshStatus == status)
+            {
+                return;
+            }
+
+            _refreshStatus = status;
+        }
+
+        RefreshStatusChanged?.Invoke(status);
     }
 }

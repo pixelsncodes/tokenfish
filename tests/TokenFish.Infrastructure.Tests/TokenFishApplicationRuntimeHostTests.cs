@@ -289,6 +289,15 @@ public sealed class TokenFishApplicationRuntimeHostTests
 
         public Action? OnStop { get; init; }
 
+        public ProviderRefreshStatus RefreshStatus { get; private set; } =
+            ProviderRefreshStatus.Initial;
+
+        public event Action<ProviderRefreshStatus>? RefreshStatusChanged
+        {
+            add { }
+            remove { }
+        }
+
         public Task Completion => _completion.Task;
 
         public Task StartAsync(CancellationToken cancellationToken)
