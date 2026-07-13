@@ -7,6 +7,16 @@ public sealed class CodexRuntimeSettingsPresenter
 {
     private const string ClaudeBridgeDescription =
         "Claude usage arrives through the local TokenFish Claude bridge.";
+    private const string ClaudeSetupDescription =
+        "Claude usage reaches TokenFish through this local bridge. Add this statusLine object to your Claude Code user settings.";
+    private const string ClaudeSetupNextSteps =
+        "Next steps: save Claude or Codex and Claude as the TokenFish provider selection, restart TokenFish when requested, configure Claude Code manually, trigger a normal Claude Code status-line update, then refresh TokenFish.";
+    private const string ClaudeSetupFolderMoveNote =
+        "If you move the published TokenFish folder, update Claude Code's configured command.";
+    private const string ClaudeSetupManualConfigurationNote =
+        "TokenFish does not edit Claude Code settings.";
+    private const string ClaudeSetupWaitingGuidance =
+        "If Claude remains waiting or unavailable, trigger a Claude Code status-line update and refresh TokenFish.";
     private const string CodexSettingsRetainedDescription =
         "Codex runtime settings are retained for later use.";
 
@@ -38,18 +48,22 @@ public sealed class CodexRuntimeSettingsPresenter
     private readonly ProviderSelectionMode _runningProviderSelectionMode;
     private readonly CodexRuntimeMode _runningRuntimeMode;
     private readonly string _runningWslDistributionName;
+    private readonly ClaudeBridgeSetup _claudeBridgeSetup;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private SavedNextLaunchSettings? _savedNextLaunchSettings;
 
     public CodexRuntimeSettingsPresenter(
         CodexRuntimeSettingsEditor editor,
         IProviderReadinessProvider? readinessProvider = null,
-        AppSettings? runningSettings = null)
+        AppSettings? runningSettings = null,
+        string? applicationBaseDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(editor);
 
         _editor = editor;
         _readinessProvider = readinessProvider ?? new ProviderReadinessProvider(null);
+        _claudeBridgeSetup = ClaudeBridgeSetupGuide.Create(
+            applicationBaseDirectory ?? AppContext.BaseDirectory);
         var normalizedRunningSettings = AppSettingsValidator.Normalize(
             runningSettings ?? new AppSettings());
         _runningProviderSelectionMode = normalizedRunningSettings.ProviderSelectionMode;
@@ -258,6 +272,8 @@ public sealed class CodexRuntimeSettingsPresenter
             ProviderSelectionMode.CodexOnly or ProviderSelectionMode.Both;
         var isClaudeEnabled = providerSelectionMode is
             ProviderSelectionMode.ClaudeOnly or ProviderSelectionMode.Both;
+        var savedProviderSelectionMode = GetSavedProviderSelectionMode(providerSelectionMode);
+        var isClaudeSetupVisible = IncludesClaude(savedProviderSelectionMode);
         var isRuntimeModeEnabled = isCodexEnabled && !isSaving;
         var isWslDistributionEnabled =
             isRuntimeModeEnabled &&
@@ -271,9 +287,9 @@ public sealed class CodexRuntimeSettingsPresenter
             runtimeMode,
             distributionName ?? string.Empty,
             _runningProviderSelectionMode,
-            GetSavedProviderSelectionMode(providerSelectionMode),
+            savedProviderSelectionMode,
             GetProviderSelectionLabel(_runningProviderSelectionMode),
-            GetProviderSelectionLabel(GetSavedProviderSelectionMode(providerSelectionMode)),
+            GetProviderSelectionLabel(savedProviderSelectionMode),
             CreatePendingRestartMessage(),
             IsPendingRestartVisible(),
             isRuntimeModeEnabled,
@@ -282,6 +298,14 @@ public sealed class CodexRuntimeSettingsPresenter
             CodexSettingsRetainedDescription,
             isClaudeEnabled,
             ClaudeBridgeDescription,
+            isClaudeSetupVisible,
+            ClaudeSetupDescription,
+            _claudeBridgeSetup.ExecutablePath,
+            _claudeBridgeSetup.SettingsSnippet,
+            ClaudeSetupNextSteps,
+            ClaudeSetupFolderMoveNote,
+            ClaudeSetupManualConfigurationNote,
+            ClaudeSetupWaitingGuidance,
             _readinessProvider.CreateReadinessRows(
                 _runningProviderSelectionMode,
                 _runningRuntimeMode),
@@ -305,6 +329,8 @@ public sealed class CodexRuntimeSettingsPresenter
         {
             SavedProviderSelectionMode = _savedNextLaunchSettings.Value.ProviderSelectionMode,
             SavedProviderSelectionLabel = GetProviderSelectionLabel(
+                _savedNextLaunchSettings.Value.ProviderSelectionMode),
+            IsClaudeSetupVisible = IncludesClaude(
                 _savedNextLaunchSettings.Value.ProviderSelectionMode),
             PendingRestartMessage = CreatePendingRestartMessage(),
             IsPendingRestartVisible = IsPendingRestartVisible(),
@@ -372,6 +398,9 @@ public sealed class CodexRuntimeSettingsPresenter
             _runningWslDistributionName,
             StringComparison.Ordinal);
 
+    private static bool IncludesClaude(ProviderSelectionMode providerSelectionMode) =>
+        providerSelectionMode is ProviderSelectionMode.ClaudeOnly or ProviderSelectionMode.Both;
+
     private static string GetProviderSelectionLabel(ProviderSelectionMode providerSelectionMode) =>
         ProviderSelectionOptions
             .First(option => option.ProviderSelectionMode == providerSelectionMode)
@@ -403,6 +432,14 @@ public sealed record CodexRuntimeSettingsViewState(
     string CodexSettingsRetainedMessage,
     bool IsClaudeBridgeDescriptionVisible,
     string ClaudeBridgeDescription,
+    bool IsClaudeSetupVisible,
+    string ClaudeSetupDescription,
+    string ClaudeBridgeExecutablePath,
+    string ClaudeStatusLineSettingsSnippet,
+    string ClaudeSetupNextSteps,
+    string ClaudeSetupFolderMoveNote,
+    string ClaudeSetupManualConfigurationNote,
+    string ClaudeSetupWaitingGuidance,
     IReadOnlyList<ProviderReadinessDisplayState> ReadinessRows,
     bool CanSave,
     bool IsSaving,

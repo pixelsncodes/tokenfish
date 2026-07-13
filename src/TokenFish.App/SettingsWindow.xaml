@@ -102,6 +102,59 @@
                         Spacing="8" />
                 </StackPanel>
 
+                <StackPanel
+                    x:Name="ClaudeSetupSection"
+                    Spacing="8"
+                    Visibility="Collapsed">
+                    <TextBlock
+                        FontSize="16"
+                        FontWeight="SemiBold"
+                        Text="Claude setup" />
+                    <TextBlock
+                        x:Name="ClaudeSetupDescriptionTextBlock"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+                    <StackPanel Spacing="4">
+                        <TextBlock
+                            FontWeight="SemiBold"
+                            Text="Bridge executable" />
+                        <TextBlock
+                            x:Name="ClaudeBridgeExecutablePathTextBlock"
+                            FontFamily="Consolas"
+                            IsTextSelectionEnabled="True"
+                            TextWrapping="WrapWholeWords" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock
+                            FontWeight="SemiBold"
+                            Text="Claude Code settings" />
+                        <TextBox
+                            x:Name="ClaudeStatusLineSettingsTextBox"
+                            AcceptsReturn="True"
+                            FontFamily="Consolas"
+                            IsReadOnly="True"
+                            MaxHeight="180"
+                            MinHeight="116"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <TextBlock
+                        x:Name="ClaudeSetupNextStepsTextBlock"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        x:Name="ClaudeSetupFolderMoveNoteTextBlock"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        x:Name="ClaudeSetupManualConfigurationNoteTextBlock"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        x:Name="ClaudeSetupWaitingGuidanceTextBlock"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
                 <StackPanel Spacing="4">
                     <TextBlock
                         FontSize="16"

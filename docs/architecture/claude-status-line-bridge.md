@@ -1,6 +1,25 @@
 # Claude Status-Line Bridge
 
-TokenFish reads Claude usage through a local status-line bridge so the desktop app can consume only normalized usage metrics. TokenFish does not edit Claude Code settings; users may manually configure the bridge executable later as a Claude Code status-line command.
+TokenFish reads Claude usage through a local status-line bridge so the desktop app can consume only normalized usage metrics. TokenFish does not edit Claude Code settings; users manually configure the bridge executable as a Claude Code status-line command.
+
+The App publish places the bridge at this stable app-relative location:
+
+`tools\claude\TokenFish.ClaudeBridge.exe`
+
+Settings resolves the absolute executable path from the running App base directory plus that relative path. Moving the published TokenFish folder after Claude Code is configured requires updating the configured command.
+
+Claude Code's documented status-line contract uses a `statusLine` settings object with `type` set to `command` and a shell command string in `command`. Claude Code pipes one JSON payload to the command on standard input and displays the command's standard output. On Windows, Claude Code runs status-line commands through Git Bash when available and otherwise through PowerShell, so TokenFish presents a PowerShell command with a forward-slash Windows executable path:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "powershell -NoProfile -Command \"& 'C:/Path/To/TokenFish/tools/claude/TokenFish.ClaudeBridge.exe'\""
+  }
+}
+```
+
+Users add or merge that object into their Claude Code user settings manually. TokenFish does not inspect Claude credentials, prompts, responses, workspaces, source code, or browser data to generate the command.
 
 Claude Code sends one JSON payload to the bridge on standard input. The bridge allowlist is limited to:
 

@@ -88,6 +88,7 @@ public sealed class CodexRuntimeSettingsPresenterTests
         Assert.Equal(codexEnabled, state.IsWslDistributionEnabled);
         Assert.Equal(!codexEnabled, state.IsCodexSettingsRetainedMessageVisible);
         Assert.Equal(claudeEnabled, state.IsClaudeBridgeDescriptionVisible);
+        Assert.Equal(claudeEnabled, state.IsClaudeSetupVisible);
         Assert.Equal("Ubuntu", state.WslDistributionName);
     }
 
@@ -102,8 +103,45 @@ public sealed class CodexRuntimeSettingsPresenterTests
         var state = presenter.SelectProviderSelectionMode(ProviderSelectionMode.ClaudeOnly);
 
         Assert.Equal([ProviderKind.Codex], state.ReadinessRows.Select(row => row.Provider));
+        Assert.True(state.IsClaudeSetupVisible);
         Assert.Equal(0, store.SaveCallCount);
         Assert.Equal(3, readinessProvider.CallCount);
+    }
+
+    [Theory]
+    [InlineData(ProviderSelectionMode.ClaudeOnly)]
+    [InlineData(ProviderSelectionMode.Both)]
+    public async Task ClaudeProviderSelectionsShowSetupGuidance(
+        ProviderSelectionMode providerSelectionMode)
+    {
+        var presenter = CreatePresenter(
+            new AppSettings { ProviderSelectionMode = providerSelectionMode },
+            applicationBaseDirectory: @"C:\Synthetic Apps\Tøken Fish");
+
+        var state = await presenter.LoadAsync(CancellationToken.None);
+
+        Assert.True(state.IsClaudeSetupVisible);
+        Assert.Equal(
+            @"C:\Synthetic Apps\Tøken Fish\tools\claude\TokenFish.ClaudeBridge.exe",
+            state.ClaudeBridgeExecutablePath);
+        Assert.Contains("\"statusLine\"", state.ClaudeStatusLineSettingsSnippet, StringComparison.Ordinal);
+        Assert.Contains("\"type\": \"command\"", state.ClaudeStatusLineSettingsSnippet, StringComparison.Ordinal);
+        Assert.Contains("powershell -NoProfile -Command", state.ClaudeStatusLineSettingsSnippet, StringComparison.Ordinal);
+        Assert.Contains("C:/Synthetic Apps", state.ClaudeStatusLineSettingsSnippet, StringComparison.Ordinal);
+        Assert.DoesNotContain(@"C:\Users\pixel", state.ClaudeStatusLineSettingsSnippet, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/mnt/c/Users/pixel", state.ClaudeStatusLineSettingsSnippet, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CodexOnlyProviderSelectionHidesSetupGuidance()
+    {
+        var presenter = CreatePresenter(
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.CodexOnly });
+
+        var state = await presenter.LoadAsync(CancellationToken.None);
+
+        Assert.False(state.IsClaudeSetupVisible);
+        Assert.NotEmpty(state.ClaudeStatusLineSettingsSnippet);
     }
 
     [Fact]
@@ -231,6 +269,7 @@ public sealed class CodexRuntimeSettingsPresenterTests
         Assert.True(state.IsPendingRestartVisible);
         Assert.Equal(ProviderSelectionMode.CodexOnly, state.RunningProviderSelectionMode);
         Assert.Equal(ProviderSelectionMode.ClaudeOnly, state.SavedProviderSelectionMode);
+        Assert.True(state.IsClaudeSetupVisible);
         Assert.Equal("Codex", state.RunningProviderSelectionLabel);
         Assert.Equal("Claude", state.SavedProviderSelectionLabel);
         Assert.Equal(
@@ -300,7 +339,9 @@ public sealed class CodexRuntimeSettingsPresenterTests
         var clearedState = await presenter.SaveAsync(CancellationToken.None);
 
         Assert.True(pendingState.IsPendingRestartVisible);
+        Assert.True(pendingState.IsClaudeSetupVisible);
         Assert.False(clearedState.IsPendingRestartVisible);
+        Assert.False(clearedState.IsClaudeSetupVisible);
         Assert.Equal("Saved. TokenFish is already using these settings.", clearedState.PendingRestartMessage);
         Assert.Equal(ProviderSelectionMode.CodexOnly, store.SavedSettings!.ProviderSelectionMode);
     }
@@ -379,14 +420,23 @@ public sealed class CodexRuntimeSettingsPresenterTests
         Assert.Equal(1, store.SaveCallCount);
     }
 
-    private static CodexRuntimeSettingsPresenter CreatePresenter(AppSettings settings) =>
-        CreatePresenter(new RecordingSettingsStore(settings));
+    private static CodexRuntimeSettingsPresenter CreatePresenter(
+        AppSettings settings,
+        string? applicationBaseDirectory = null) =>
+        CreatePresenter(
+            new RecordingSettingsStore(settings),
+            applicationBaseDirectory: applicationBaseDirectory);
 
     private static CodexRuntimeSettingsPresenter CreatePresenter(
         RecordingSettingsStore store,
         IProviderReadinessProvider? readinessProvider = null,
-        AppSettings? runningSettings = null) =>
-        new(new CodexRuntimeSettingsEditor(store), readinessProvider, runningSettings);
+        AppSettings? runningSettings = null,
+        string? applicationBaseDirectory = null) =>
+        new(
+            new CodexRuntimeSettingsEditor(store),
+            readinessProvider,
+            runningSettings,
+            applicationBaseDirectory);
 
     private sealed class RecordingReadinessProvider : IProviderReadinessProvider
     {

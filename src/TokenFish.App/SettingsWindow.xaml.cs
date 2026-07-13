@@ -165,6 +165,16 @@ public sealed partial class SettingsWindow : Window
                 state.IsClaudeBridgeDescriptionVisible
                     ? Visibility.Visible
                     : Visibility.Collapsed;
+            ClaudeSetupSection.Visibility =
+                state.IsClaudeSetupVisible ? Visibility.Visible : Visibility.Collapsed;
+            ClaudeSetupDescriptionTextBlock.Text = state.ClaudeSetupDescription;
+            ClaudeBridgeExecutablePathTextBlock.Text = state.ClaudeBridgeExecutablePath;
+            ClaudeStatusLineSettingsTextBox.Text = state.ClaudeStatusLineSettingsSnippet;
+            ClaudeSetupNextStepsTextBlock.Text = state.ClaudeSetupNextSteps;
+            ClaudeSetupFolderMoveNoteTextBlock.Text = state.ClaudeSetupFolderMoveNote;
+            ClaudeSetupManualConfigurationNoteTextBlock.Text =
+                state.ClaudeSetupManualConfigurationNote;
+            ClaudeSetupWaitingGuidanceTextBlock.Text = state.ClaudeSetupWaitingGuidance;
             SaveButton.IsEnabled = state.CanSave;
             SaveButton.Content = state.IsSaving ? "Saving..." : "Save";
             StatusTextBlock.Text = state.StatusMessage;
