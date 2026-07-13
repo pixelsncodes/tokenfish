@@ -20,6 +20,8 @@ public partial class App : Application
     private SettingsWindowCoordinator? _settingsWindowCoordinator;
     private ApplicationRelaunchActivationController? _relaunchActivationController;
     private ApplicationShutdownCoordinator? _shutdownCoordinator;
+    private OnboardingWindow? _onboardingWindow;
+    private AppSettings? _startupSettings;
     private readonly TrayPopupDisplayStateAdapter _displayStateAdapter = new();
     private readonly IProviderRuntimeSnapshotStore _emptySnapshotStore =
         new InMemoryProviderRuntimeSnapshotStore(TimeProvider.System, TimeSpan.FromMinutes(10));
@@ -74,8 +76,7 @@ public partial class App : Application
         _relaunchActivationController = new ApplicationRelaunchActivationController(
             _startupCoordinator,
             popupActionQueue,
-            cancellationToken =>
-                _popupController?.ShowAsync(cancellationToken) ?? Task.CompletedTask,
+            cancellationToken => ActivatePrimaryWindowAsync(cancellationToken),
             _runtimeHost.ReportShellFault);
         _relaunchActivationController.Initialize();
         _runtimeHost.StatusChanged += OnRuntimeStatusChanged;
@@ -86,7 +87,97 @@ public partial class App : Application
             CompleteApplicationShutdown,
             _runtimeHost.ReportShellFault);
 
-        _ = StartRuntimeAsync();
+        _ = InitializeStartupAsync();
+    }
+
+    private async Task InitializeStartupAsync()
+    {
+        var settings = await _settingsStore.LoadAsync(CancellationToken.None);
+        _startupSettings = settings;
+
+        if (settings.IsOnboardingCompleted)
+        {
+            await StartRuntimeAsync();
+            return;
+        }
+
+        ShowOnboarding(settings);
+    }
+
+    private Task ActivatePrimaryWindowAsync(CancellationToken cancellationToken)
+    {
+        if (_onboardingWindow is not null)
+        {
+            PopupWindowPlacement.BringToForeground(_onboardingWindow);
+            return Task.CompletedTask;
+        }
+
+        return _popupController?.ShowAsync(cancellationToken) ?? Task.CompletedTask;
+    }
+
+    private void ShowOnboarding(AppSettings settings)
+    {
+        if (_onboardingWindow is not null)
+        {
+            PopupWindowPlacement.BringToForeground(_onboardingWindow);
+            return;
+        }
+
+        var setup = ClaudeBridgeSetupGuide.Create(AppContext.BaseDirectory);
+        var window = new OnboardingWindow(new OnboardingFlowController(settings), setup.SettingsSnippet);
+        _onboardingWindow = window;
+        window.Deferred += OnOnboardingDeferred;
+        window.VerificationRequested += OnOnboardingVerificationRequested;
+        window.Completed += OnOnboardingCompleted;
+        window.Closed += OnOnboardingClosed;
+        window.Activate();
+    }
+
+    private void OnOnboardingDeferred() => _ = StartRuntimeAsync();
+
+    private void OnOnboardingVerificationRequested(AppSettings settings) =>
+        _ = ApplyOnboardingSettingsAsync(settings);
+
+    private async Task ApplyOnboardingSettingsAsync(AppSettings settings)
+    {
+        try
+        {
+            await _settingsStore.SaveAsync(settings, CancellationToken.None);
+            await StartRuntimeAsync();
+        }
+        catch
+        {
+            _runtimeHost.ReportShellFault();
+        }
+    }
+
+    private void OnOnboardingCompleted(AppSettings settings) =>
+        _ = CompleteOnboardingAsync(settings);
+
+    private async Task CompleteOnboardingAsync(AppSettings settings)
+    {
+        try
+        {
+            await _settingsStore.SaveAsync(settings, CancellationToken.None);
+            _onboardingWindow?.CloseAfterCompletion();
+        }
+        catch
+        {
+            _runtimeHost.ReportShellFault();
+        }
+    }
+
+    private void OnOnboardingClosed(object sender, WindowEventArgs args)
+    {
+        if (sender is OnboardingWindow window)
+        {
+            window.Deferred -= OnOnboardingDeferred;
+            window.VerificationRequested -= OnOnboardingVerificationRequested;
+            window.Completed -= OnOnboardingCompleted;
+            window.Closed -= OnOnboardingClosed;
+        }
+
+        _onboardingWindow = null;
     }
 
     private async Task StartRuntimeAsync()

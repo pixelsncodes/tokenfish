@@ -11,6 +11,7 @@ public sealed partial class OnboardingWindow : Window
     private readonly OnboardingFlowController _flow;
     private readonly IClipboardService _clipboard;
     private readonly string _claudeSnippet;
+    private bool _terminalResult;
 
     public OnboardingWindow(
         OnboardingFlowController flow,
@@ -27,15 +28,28 @@ public sealed partial class OnboardingWindow : Window
             presenter.IsMaximizable = true;
         }
         AppWindow.Resize(new Windows.Graphics.SizeInt32(760, 620));
-        Closed += (_, _) => Deferred?.Invoke();
+        Closed += (_, _) =>
+        {
+            if (!_terminalResult)
+            {
+                Deferred?.Invoke();
+            }
+        };
         Render();
     }
 
     public event Action? Deferred;
     public event Action<AppSettings>? VerificationRequested;
+    public event Action<AppSettings>? Completed;
 
     private void OnContinueClicked(object sender, RoutedEventArgs args)
     {
+        if (_flow.Step == OnboardingStep.Finish)
+        {
+            Completed?.Invoke(_flow.CreatePendingSettings() with { IsOnboardingCompleted = true });
+            return;
+        }
+
         _flow.SetProviderSelection(ClaudeCheckBox.IsChecked == true, CodexCheckBox.IsChecked == true);
         _flow.SetWslDistributionName(WslDistributionTextBox.Text);
         if (!_flow.Continue())
@@ -59,7 +73,14 @@ public sealed partial class OnboardingWindow : Window
 
     private void OnNotNowClicked(object sender, RoutedEventArgs args)
     {
+        _terminalResult = true;
         Deferred?.Invoke();
+        Close();
+    }
+
+    public void CloseAfterCompletion()
+    {
+        _terminalResult = true;
         Close();
     }
 
