@@ -22,9 +22,10 @@ public sealed class CodexRuntimeSettingsPresenter
         State = CreateState(
             CodexRuntimeMode.WslLoginShell,
             null,
-            "Loading settings...",
+            string.Empty,
             CodexRuntimeSettingsStatusKind.Information,
             CodexRuntimeSettingsFocusTarget.None,
+            isStatusVisible: false,
             isSaving: false);
     }
 
@@ -39,9 +40,10 @@ public sealed class CodexRuntimeSettingsPresenter
             State = CreateState(
                 draft.RuntimeMode,
                 draft.WslDistributionName,
-                RestartMessage,
+                string.Empty,
                 CodexRuntimeSettingsStatusKind.Information,
                 CodexRuntimeSettingsFocusTarget.None,
+                isStatusVisible: false,
                 isSaving: false);
         }
         catch (OperationCanceledException)
@@ -55,6 +57,7 @@ public sealed class CodexRuntimeSettingsPresenter
                 StatusMessage = "Settings could not be loaded.",
                 StatusKind = CodexRuntimeSettingsStatusKind.PersistenceError,
                 FocusTarget = CodexRuntimeSettingsFocusTarget.None,
+                IsStatusVisible = true,
                 IsSaving = false
             };
         }
@@ -72,6 +75,7 @@ public sealed class CodexRuntimeSettingsPresenter
                 "Select a supported runtime mode.",
                 CodexRuntimeSettingsStatusKind.ValidationError,
                 CodexRuntimeSettingsFocusTarget.RuntimeMode,
+                isStatusVisible: true,
                 State.IsSaving);
             return State;
         }
@@ -79,9 +83,10 @@ public sealed class CodexRuntimeSettingsPresenter
         State = CreateState(
             runtimeMode,
             runtimeMode == CodexRuntimeMode.NativeWindows ? null : State.WslDistributionName,
-            RestartMessage,
+            string.Empty,
             CodexRuntimeSettingsStatusKind.Information,
             CodexRuntimeSettingsFocusTarget.None,
+            isStatusVisible: false,
             State.IsSaving);
 
         return State;
@@ -125,6 +130,7 @@ public sealed class CodexRuntimeSettingsPresenter
                     StatusMessage = "Settings saved. Runtime changes apply after TokenFish is restarted.",
                     StatusKind = CodexRuntimeSettingsStatusKind.Success,
                     FocusTarget = CodexRuntimeSettingsFocusTarget.None,
+                    IsStatusVisible = true,
                     CanSave = true,
                     IsSaving = false
                 },
@@ -133,6 +139,7 @@ public sealed class CodexRuntimeSettingsPresenter
                     StatusMessage = "Settings are not valid.",
                     StatusKind = CodexRuntimeSettingsStatusKind.ValidationError,
                     FocusTarget = CodexRuntimeSettingsFocusTarget.RuntimeMode,
+                    IsStatusVisible = true,
                     CanSave = true,
                     IsSaving = false
                 },
@@ -141,6 +148,7 @@ public sealed class CodexRuntimeSettingsPresenter
                     StatusMessage = "Settings could not be saved.",
                     StatusKind = CodexRuntimeSettingsStatusKind.PersistenceError,
                     FocusTarget = CodexRuntimeSettingsFocusTarget.None,
+                    IsStatusVisible = true,
                     CanSave = true,
                     IsSaving = false
                 },
@@ -149,6 +157,7 @@ public sealed class CodexRuntimeSettingsPresenter
                     StatusMessage = "Settings could not be saved.",
                     StatusKind = CodexRuntimeSettingsStatusKind.PersistenceError,
                     FocusTarget = CodexRuntimeSettingsFocusTarget.None,
+                    IsStatusVisible = true,
                     CanSave = true,
                     IsSaving = false
                 }
@@ -168,6 +177,7 @@ public sealed class CodexRuntimeSettingsPresenter
         string statusMessage,
         CodexRuntimeSettingsStatusKind statusKind,
         CodexRuntimeSettingsFocusTarget focusTarget,
+        bool isStatusVisible,
         bool isSaving) =>
         new(
             RuntimeModeOptions,
@@ -178,10 +188,8 @@ public sealed class CodexRuntimeSettingsPresenter
             isSaving,
             statusMessage,
             statusKind,
+            isStatusVisible,
             focusTarget);
-
-    private const string RestartMessage =
-        "Saved runtime changes apply after TokenFish is restarted.";
 }
 
 public sealed record CodexRuntimeModeOption(CodexRuntimeMode RuntimeMode, string Label);
@@ -195,6 +203,7 @@ public sealed record CodexRuntimeSettingsViewState(
     bool IsSaving,
     string StatusMessage,
     CodexRuntimeSettingsStatusKind StatusKind,
+    bool IsStatusVisible,
     CodexRuntimeSettingsFocusTarget FocusTarget);
 
 public enum CodexRuntimeSettingsStatusKind

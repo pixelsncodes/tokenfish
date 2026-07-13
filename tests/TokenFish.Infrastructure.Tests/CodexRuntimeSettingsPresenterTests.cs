@@ -7,6 +7,15 @@ namespace TokenFish.Infrastructure.Tests;
 public sealed class CodexRuntimeSettingsPresenterTests
 {
     [Fact]
+    public void InitialStateHasNoVisibleStatusMessage()
+    {
+        var presenter = CreatePresenter(new AppSettings());
+
+        Assert.False(presenter.State.IsStatusVisible);
+        Assert.Equal(string.Empty, presenter.State.StatusMessage);
+    }
+
+    [Fact]
     public async Task LoadProjectsPersistedRuntimeSettings()
     {
         var presenter = CreatePresenter(
@@ -21,7 +30,8 @@ public sealed class CodexRuntimeSettingsPresenterTests
         Assert.Equal(CodexRuntimeMode.Wsl, state.RuntimeMode);
         Assert.Equal("Ubuntu-24.04", state.WslDistributionName);
         Assert.True(state.IsWslDistributionEnabled);
-        Assert.Contains("restarted", state.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(state.IsStatusVisible);
+        Assert.Equal(string.Empty, state.StatusMessage);
     }
 
     [Fact]
@@ -66,6 +76,7 @@ public sealed class CodexRuntimeSettingsPresenterTests
         var state = await presenter.SaveAsync(CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsStatusKind.Success, state.StatusKind);
+        Assert.True(state.IsStatusVisible);
         Assert.Equal("Settings saved. Runtime changes apply after TokenFish is restarted.", state.StatusMessage);
         Assert.Equal(CodexRuntimeMode.WslLoginShell, store.SavedSettings!.CodexRuntimeMode);
         Assert.Equal("Ubuntu", store.SavedSettings.CodexWslDistributionName);
@@ -80,6 +91,8 @@ public sealed class CodexRuntimeSettingsPresenterTests
         var state = await presenter.SaveAsync(CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsStatusKind.ValidationError, state.StatusKind);
+        Assert.True(state.IsStatusVisible);
+        Assert.Equal("Settings are not valid.", state.StatusMessage);
         Assert.Equal(CodexRuntimeSettingsFocusTarget.RuntimeMode, state.FocusTarget);
         Assert.True(state.CanSave);
     }
@@ -96,9 +109,22 @@ public sealed class CodexRuntimeSettingsPresenterTests
         var state = await presenter.SaveAsync(CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsStatusKind.PersistenceError, state.StatusKind);
+        Assert.True(state.IsStatusVisible);
         Assert.Equal("Settings could not be saved.", state.StatusMessage);
         Assert.DoesNotContain("C:\\", state.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("secret", state.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ReloadReturnsToNeutralStatusState()
+    {
+        var presenter = CreatePresenter(new AppSettings());
+        await presenter.SaveAsync(CancellationToken.None);
+
+        var state = await presenter.LoadAsync(CancellationToken.None);
+
+        Assert.False(state.IsStatusVisible);
+        Assert.Equal(string.Empty, state.StatusMessage);
     }
 
     [Fact]

@@ -109,6 +109,7 @@ public sealed partial class SettingsWindow : Window
             SaveButton.IsEnabled = state.CanSave;
             SaveButton.Content = state.IsSaving ? "Saving..." : "Save";
             StatusTextBlock.Text = state.StatusMessage;
+            StatusBorder.Visibility = state.IsStatusVisible ? Visibility.Visible : Visibility.Collapsed;
             StatusBorder.BorderBrush = GetStatusBorderBrush(state.StatusKind);
         }
         finally
