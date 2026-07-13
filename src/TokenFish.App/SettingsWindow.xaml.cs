@@ -2,6 +2,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using TokenFish.Core.Models;
 using TokenFish.App.Platform;
 using TokenFish.Infrastructure;
 
@@ -67,6 +68,28 @@ public sealed partial class SettingsWindow : Window
         ApplyState(_presenter.SelectRuntimeMode(option.RuntimeMode));
     }
 
+    private void OnProviderSelectionChecked(object sender, RoutedEventArgs args)
+    {
+        _ = args;
+        if (_updatingControls)
+        {
+            return;
+        }
+
+        var providerSelectionMode = sender switch
+        {
+            RadioButton radioButton when radioButton == CodexProviderRadioButton =>
+                ProviderSelectionMode.CodexOnly,
+            RadioButton radioButton when radioButton == ClaudeProviderRadioButton =>
+                ProviderSelectionMode.ClaudeOnly,
+            RadioButton radioButton when radioButton == BothProvidersRadioButton =>
+                ProviderSelectionMode.Both,
+            _ => _presenter.State.ProviderSelectionMode
+        };
+
+        ApplyState(_presenter.SelectProviderSelectionMode(providerSelectionMode));
+    }
+
     private void OnWslDistributionTextChanged(object sender, TextChangedEventArgs args)
     {
         _ = args;
@@ -99,6 +122,13 @@ public sealed partial class SettingsWindow : Window
         _updatingControls = true;
         try
         {
+            CodexProviderRadioButton.IsChecked =
+                state.ProviderSelectionMode == ProviderSelectionMode.CodexOnly;
+            ClaudeProviderRadioButton.IsChecked =
+                state.ProviderSelectionMode == ProviderSelectionMode.ClaudeOnly;
+            BothProvidersRadioButton.IsChecked =
+                state.ProviderSelectionMode == ProviderSelectionMode.Both;
+
             RuntimeModeComboBox.SelectedItem = state.RuntimeModeOptions
                 .FirstOrDefault(option => option.RuntimeMode == state.RuntimeMode);
 
@@ -107,7 +137,20 @@ public sealed partial class SettingsWindow : Window
                 WslDistributionTextBox.Text = state.WslDistributionName;
             }
 
+            RuntimeModeComboBox.IsEnabled = state.IsRuntimeModeEnabled;
             WslDistributionTextBox.IsEnabled = state.IsWslDistributionEnabled;
+            WslDistributionHelpTextBlock.Visibility =
+                state.IsRuntimeModeEnabled ? Visibility.Visible : Visibility.Collapsed;
+            CodexSettingsRetainedTextBlock.Text = state.CodexSettingsRetainedMessage;
+            CodexSettingsRetainedTextBlock.Visibility =
+                state.IsCodexSettingsRetainedMessageVisible
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            ClaudeBridgeDescriptionTextBlock.Text = state.ClaudeBridgeDescription;
+            ClaudeBridgeDescriptionTextBlock.Visibility =
+                state.IsClaudeBridgeDescriptionVisible
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
             SaveButton.IsEnabled = state.CanSave;
             SaveButton.Content = state.IsSaving ? "Saving..." : "Save";
             StatusTextBlock.Text = state.StatusMessage;
@@ -155,6 +198,9 @@ public sealed partial class SettingsWindow : Window
     {
         switch (focusTarget)
         {
+            case CodexRuntimeSettingsFocusTarget.ProviderSelection:
+                CodexProviderRadioButton.Focus(FocusState.Programmatic);
+                break;
             case CodexRuntimeSettingsFocusTarget.RuntimeMode:
                 RuntimeModeComboBox.Focus(FocusState.Programmatic);
                 break;

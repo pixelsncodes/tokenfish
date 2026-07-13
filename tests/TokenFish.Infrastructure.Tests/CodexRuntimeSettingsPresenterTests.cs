@@ -21,14 +21,17 @@ public sealed class CodexRuntimeSettingsPresenterTests
         var presenter = CreatePresenter(
             new AppSettings
             {
+                ProviderSelectionMode = ProviderSelectionMode.Both,
                 CodexRuntimeMode = CodexRuntimeMode.Wsl,
                 CodexWslDistributionName = "Ubuntu-24.04"
             });
 
         var state = await presenter.LoadAsync(CancellationToken.None);
 
+        Assert.Equal(ProviderSelectionMode.Both, state.ProviderSelectionMode);
         Assert.Equal(CodexRuntimeMode.Wsl, state.RuntimeMode);
         Assert.Equal("Ubuntu-24.04", state.WslDistributionName);
+        Assert.True(state.IsRuntimeModeEnabled);
         Assert.True(state.IsWslDistributionEnabled);
         Assert.False(state.IsStatusVisible);
         Assert.Equal(string.Empty, state.StatusMessage);
@@ -45,6 +48,47 @@ public sealed class CodexRuntimeSettingsPresenterTests
 
         Assert.Equal(["WSL login shell", "WSL direct", "Native Windows"], labels);
         Assert.DoesNotContain("WslLoginShell", labels);
+    }
+
+    [Fact]
+    public void ProviderModeLabelsAreUserFacing()
+    {
+        var presenter = CreatePresenter(new AppSettings());
+
+        var labels = presenter.State.ProviderSelectionOptions
+            .Select(option => option.Label)
+            .ToArray();
+
+        Assert.Equal(["Codex", "Claude", "Codex and Claude"], labels);
+        Assert.DoesNotContain("CodexOnly", labels);
+        Assert.DoesNotContain("ClaudeOnly", labels);
+    }
+
+    [Theory]
+    [InlineData(ProviderSelectionMode.CodexOnly, true, false)]
+    [InlineData(ProviderSelectionMode.ClaudeOnly, false, true)]
+    [InlineData(ProviderSelectionMode.Both, true, true)]
+    public async Task ProviderSelectionUpdatesContextualControlState(
+        ProviderSelectionMode providerSelectionMode,
+        bool codexEnabled,
+        bool claudeEnabled)
+    {
+        var presenter = CreatePresenter(
+            new AppSettings
+            {
+                CodexRuntimeMode = CodexRuntimeMode.Wsl,
+                CodexWslDistributionName = "Ubuntu"
+            });
+        await presenter.LoadAsync(CancellationToken.None);
+
+        var state = presenter.SelectProviderSelectionMode(providerSelectionMode);
+
+        Assert.Equal(providerSelectionMode, state.ProviderSelectionMode);
+        Assert.Equal(codexEnabled, state.IsRuntimeModeEnabled);
+        Assert.Equal(codexEnabled, state.IsWslDistributionEnabled);
+        Assert.Equal(!codexEnabled, state.IsCodexSettingsRetainedMessageVisible);
+        Assert.Equal(claudeEnabled, state.IsClaudeBridgeDescriptionVisible);
+        Assert.Equal("Ubuntu", state.WslDistributionName);
     }
 
     [Fact]
@@ -66,6 +110,37 @@ public sealed class CodexRuntimeSettingsPresenterTests
     }
 
     [Fact]
+    public async Task SelectingClaudeOnlyDoesNotClearRuntimeValuesBeforeSave()
+    {
+        var presenter = CreatePresenter(
+            new AppSettings
+            {
+                CodexRuntimeMode = CodexRuntimeMode.Wsl,
+                CodexWslDistributionName = "Ubuntu"
+            });
+        await presenter.LoadAsync(CancellationToken.None);
+
+        var state = presenter.SelectProviderSelectionMode(ProviderSelectionMode.ClaudeOnly);
+
+        Assert.False(state.IsRuntimeModeEnabled);
+        Assert.False(state.IsWslDistributionEnabled);
+        Assert.Equal(CodexRuntimeMode.Wsl, state.RuntimeMode);
+        Assert.Equal("Ubuntu", state.WslDistributionName);
+    }
+
+    [Fact]
+    public void SwitchingProviderOptionsBeforeSaveDoesNotPersistSettings()
+    {
+        var store = new RecordingSettingsStore(new AppSettings());
+        var presenter = CreatePresenter(store);
+
+        presenter.SelectProviderSelectionMode(ProviderSelectionMode.ClaudeOnly);
+
+        Assert.Equal(0, store.SaveCallCount);
+        Assert.Null(store.SavedSettings);
+    }
+
+    [Fact]
     public async Task SuccessfulSaveReportsRestartRequirement()
     {
         var store = new RecordingSettingsStore(new AppSettings());
@@ -77,9 +152,55 @@ public sealed class CodexRuntimeSettingsPresenterTests
 
         Assert.Equal(CodexRuntimeSettingsStatusKind.Success, state.StatusKind);
         Assert.True(state.IsStatusVisible);
-        Assert.Equal("Settings saved. Runtime changes apply after TokenFish is restarted.", state.StatusMessage);
+        Assert.Equal("Runtime changes take effect after TokenFish restarts.", state.StatusMessage);
         Assert.Equal(CodexRuntimeMode.WslLoginShell, store.SavedSettings!.CodexRuntimeMode);
         Assert.Equal("Ubuntu", store.SavedSettings.CodexWslDistributionName);
+    }
+
+    [Fact]
+    public async Task ProviderOnlySaveReportsProviderRestartRequirement()
+    {
+        var store = new RecordingSettingsStore(new AppSettings());
+        var presenter = CreatePresenter(store);
+        presenter.SelectProviderSelectionMode(ProviderSelectionMode.ClaudeOnly);
+
+        var state = await presenter.SaveAsync(CancellationToken.None);
+
+        Assert.Equal(CodexRuntimeSettingsStatusKind.Success, state.StatusKind);
+        Assert.Equal("Provider changes take effect after TokenFish restarts.", state.StatusMessage);
+        Assert.Equal(ProviderSelectionMode.ClaudeOnly, store.SavedSettings!.ProviderSelectionMode);
+    }
+
+    [Fact]
+    public async Task ProviderAndRuntimeSaveReportsCombinedRestartRequirement()
+    {
+        var store = new RecordingSettingsStore(new AppSettings());
+        var presenter = CreatePresenter(store);
+        presenter.SelectProviderSelectionMode(ProviderSelectionMode.Both);
+        presenter.SelectRuntimeMode(CodexRuntimeMode.Wsl);
+        presenter.SetWslDistributionName("Ubuntu");
+
+        var state = await presenter.SaveAsync(CancellationToken.None);
+
+        Assert.Equal(CodexRuntimeSettingsStatusKind.Success, state.StatusKind);
+        Assert.Equal(
+            "Provider and runtime changes take effect after TokenFish restarts.",
+            state.StatusMessage);
+        Assert.Equal(ProviderSelectionMode.Both, store.SavedSettings!.ProviderSelectionMode);
+        Assert.Equal(CodexRuntimeMode.Wsl, store.SavedSettings.CodexRuntimeMode);
+        Assert.Equal("Ubuntu", store.SavedSettings.CodexWslDistributionName);
+    }
+
+    [Fact]
+    public async Task UnchangedSaveDoesNotReportRestartRequirement()
+    {
+        var presenter = CreatePresenter(new AppSettings());
+
+        var state = await presenter.SaveAsync(CancellationToken.None);
+
+        Assert.Equal(CodexRuntimeSettingsStatusKind.Information, state.StatusKind);
+        Assert.True(state.IsStatusVisible);
+        Assert.Equal("Settings are already up to date.", state.StatusMessage);
     }
 
     [Fact]
@@ -105,6 +226,7 @@ public sealed class CodexRuntimeSettingsPresenterTests
             SaveException = new InvalidOperationException("C:\\Users\\pixel\\secret\\settings.json")
         };
         var presenter = CreatePresenter(store);
+        presenter.SelectProviderSelectionMode(ProviderSelectionMode.ClaudeOnly);
 
         var state = await presenter.SaveAsync(CancellationToken.None);
 
@@ -141,6 +263,7 @@ public sealed class CodexRuntimeSettingsPresenterTests
             }
         };
         var presenter = CreatePresenter(store);
+        presenter.SelectProviderSelectionMode(ProviderSelectionMode.ClaudeOnly);
 
         var firstSave = presenter.SaveAsync(CancellationToken.None);
         await saveEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));

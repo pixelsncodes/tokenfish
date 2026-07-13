@@ -22,6 +22,7 @@ public sealed class CodexRuntimeSettingsEditor
         var normalizedSettings = AppSettingsValidator.Normalize(settings);
 
         return new CodexRuntimeSettingsDraft(
+            normalizedSettings.ProviderSelectionMode,
             normalizedSettings.CodexRuntimeMode,
             normalizedSettings.CodexWslDistributionName);
     }
@@ -50,9 +51,11 @@ public sealed class CodexRuntimeSettingsEditor
         AppSettings normalizedSettings;
         try
         {
+            currentSettings = AppSettingsValidator.Normalize(currentSettings);
             normalizedSettings = AppSettingsValidator.Normalize(
                 currentSettings with
                 {
+                    ProviderSelectionMode = draft.ProviderSelectionMode,
                     CodexRuntimeMode = draft.RuntimeMode,
                     CodexWslDistributionName = draft.WslDistributionName
                 });
@@ -60,6 +63,17 @@ public sealed class CodexRuntimeSettingsEditor
         catch (ArgumentException)
         {
             return CodexRuntimeSettingsSaveResult.ValidationFailed;
+        }
+
+        var providerChanged =
+            currentSettings.ProviderSelectionMode != normalizedSettings.ProviderSelectionMode;
+        var runtimeChanged =
+            currentSettings.CodexRuntimeMode != normalizedSettings.CodexRuntimeMode ||
+            currentSettings.CodexWslDistributionName != normalizedSettings.CodexWslDistributionName;
+
+        if (!providerChanged && !runtimeChanged)
+        {
+            return CodexRuntimeSettingsSaveResult.Unchanged;
         }
 
         try
@@ -76,20 +90,32 @@ public sealed class CodexRuntimeSettingsEditor
             return CodexRuntimeSettingsSaveResult.PersistenceFailed;
         }
 
-        return CodexRuntimeSettingsSaveResult.Saved;
+        return CodexRuntimeSettingsSaveResult.Saved(providerChanged, runtimeChanged);
     }
 }
 
 public sealed record CodexRuntimeSettingsDraft(
+    ProviderSelectionMode ProviderSelectionMode,
     CodexRuntimeMode RuntimeMode,
     string? WslDistributionName);
 
 public sealed record CodexRuntimeSettingsSaveResult(
     CodexRuntimeSettingsSaveStatus Status,
-    string Message)
+    string Message,
+    bool ProviderChanged = false,
+    bool RuntimeChanged = false)
 {
-    public static CodexRuntimeSettingsSaveResult Saved { get; } =
-        new(CodexRuntimeSettingsSaveStatus.Saved, "Settings saved.");
+    public static CodexRuntimeSettingsSaveResult Saved(
+        bool providerChanged,
+        bool runtimeChanged) =>
+        new(
+            CodexRuntimeSettingsSaveStatus.Saved,
+            "Settings saved.",
+            providerChanged,
+            runtimeChanged);
+
+    public static CodexRuntimeSettingsSaveResult Unchanged { get; } =
+        new(CodexRuntimeSettingsSaveStatus.Unchanged, "Settings are already up to date.");
 
     public static CodexRuntimeSettingsSaveResult ValidationFailed { get; } =
         new(CodexRuntimeSettingsSaveStatus.ValidationFailed, "Settings are not valid.");
@@ -100,6 +126,7 @@ public sealed record CodexRuntimeSettingsSaveResult(
 
 public enum CodexRuntimeSettingsSaveStatus
 {
+    Unchanged,
     Saved,
     ValidationFailed,
     PersistenceFailed

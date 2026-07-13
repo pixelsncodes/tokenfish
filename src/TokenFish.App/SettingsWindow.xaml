@@ -41,6 +41,58 @@
                     <TextBlock
                         FontSize="16"
                         FontWeight="SemiBold"
+                        Text="Providers" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Choose which local provider data TokenFish shows after the next launch."
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <StackPanel Spacing="2">
+                        <RadioButton
+                            x:Name="CodexProviderRadioButton"
+                            AutomationProperties.Name="Provider Codex"
+                            Checked="OnProviderSelectionChecked"
+                            Content="Codex" />
+                        <TextBlock
+                            Margin="32,0,0,0"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Reads usage through the configured Codex runtime."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <RadioButton
+                            x:Name="ClaudeProviderRadioButton"
+                            AutomationProperties.Name="Provider Claude"
+                            Checked="OnProviderSelectionChecked"
+                            Content="Claude" />
+                        <TextBlock
+                            Margin="32,0,0,0"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Reads normalized usage received through the local TokenFish Claude bridge."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <RadioButton
+                            x:Name="BothProvidersRadioButton"
+                            AutomationProperties.Name="Provider Codex and Claude"
+                            Checked="OnProviderSelectionChecked"
+                            Content="Codex and Claude" />
+                        <TextBlock
+                            Margin="32,0,0,0"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Shows both providers."
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Spacing="4">
+                    <TextBlock
+                        FontSize="16"
+                        FontWeight="SemiBold"
                         Text="Codex runtime" />
                     <TextBlock
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -72,6 +124,17 @@
                         PlaceholderText="Optional"
                         TextChanged="OnWslDistributionTextChanged" />
                     <TextBlock
+                        x:Name="CodexSettingsRetainedTextBlock"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap"
+                        Visibility="Collapsed" />
+                    <TextBlock
+                        x:Name="ClaudeBridgeDescriptionTextBlock"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap"
+                        Visibility="Collapsed" />
+                    <TextBlock
+                        x:Name="WslDistributionHelpTextBlock"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Text="Leave empty to use the default WSL distribution."
                         TextWrapping="Wrap" />

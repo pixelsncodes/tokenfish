@@ -12,6 +12,7 @@ public sealed class CodexRuntimeSettingsEditorTests
         var store = new RecordingSettingsStore(
             new AppSettings
             {
+                ProviderSelectionMode = ProviderSelectionMode.Both,
                 CodexRuntimeMode = CodexRuntimeMode.Wsl,
                 CodexWslDistributionName = "Ubuntu-24.04"
             });
@@ -19,6 +20,7 @@ public sealed class CodexRuntimeSettingsEditorTests
 
         var draft = await editor.LoadDraftAsync(CancellationToken.None);
 
+        Assert.Equal(ProviderSelectionMode.Both, draft.ProviderSelectionMode);
         Assert.Equal(CodexRuntimeMode.Wsl, draft.RuntimeMode);
         Assert.Equal("Ubuntu-24.04", draft.WslDistributionName);
     }
@@ -36,7 +38,7 @@ public sealed class CodexRuntimeSettingsEditorTests
         var editor = new CodexRuntimeSettingsEditor(store);
 
         var result = await editor.SaveAsync(
-            new CodexRuntimeSettingsDraft(CodexRuntimeMode.Wsl, "Ubuntu"),
+            new CodexRuntimeSettingsDraft(ProviderSelectionMode.Both, CodexRuntimeMode.Wsl, "Ubuntu"),
             CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsSaveStatus.Saved, result.Status);
@@ -53,10 +55,14 @@ public sealed class CodexRuntimeSettingsEditorTests
         var editor = new CodexRuntimeSettingsEditor(store);
 
         var result = await editor.SaveAsync(
-            new CodexRuntimeSettingsDraft(CodexRuntimeMode.WslLoginShell, "Ubuntu-24.04"),
+            new CodexRuntimeSettingsDraft(
+                ProviderSelectionMode.CodexOnly,
+                CodexRuntimeMode.WslLoginShell,
+                "Ubuntu-24.04"),
             CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsSaveStatus.Saved, result.Status);
+        Assert.Equal(ProviderSelectionMode.CodexOnly, store.SavedSettings!.ProviderSelectionMode);
         Assert.Equal(CodexRuntimeMode.WslLoginShell, store.SavedSettings!.CodexRuntimeMode);
         Assert.Equal("Ubuntu-24.04", store.SavedSettings.CodexWslDistributionName);
     }
@@ -68,10 +74,11 @@ public sealed class CodexRuntimeSettingsEditorTests
         var editor = new CodexRuntimeSettingsEditor(store);
 
         var result = await editor.SaveAsync(
-            new CodexRuntimeSettingsDraft(CodexRuntimeMode.Wsl, "Ubuntu"),
+            new CodexRuntimeSettingsDraft(ProviderSelectionMode.ClaudeOnly, CodexRuntimeMode.Wsl, "Ubuntu"),
             CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsSaveStatus.Saved, result.Status);
+        Assert.Equal(ProviderSelectionMode.ClaudeOnly, store.SavedSettings!.ProviderSelectionMode);
         Assert.Equal(CodexRuntimeMode.Wsl, store.SavedSettings!.CodexRuntimeMode);
         Assert.Equal("Ubuntu", store.SavedSettings.CodexWslDistributionName);
     }
@@ -86,10 +93,14 @@ public sealed class CodexRuntimeSettingsEditorTests
         var editor = new CodexRuntimeSettingsEditor(store);
 
         var result = await editor.SaveAsync(
-            new CodexRuntimeSettingsDraft(CodexRuntimeMode.NativeWindows, distributionName),
+            new CodexRuntimeSettingsDraft(
+                ProviderSelectionMode.Both,
+                CodexRuntimeMode.NativeWindows,
+                distributionName),
             CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsSaveStatus.Saved, result.Status);
+        Assert.Equal(ProviderSelectionMode.Both, store.SavedSettings!.ProviderSelectionMode);
         Assert.Equal(CodexRuntimeMode.NativeWindows, store.SavedSettings!.CodexRuntimeMode);
         Assert.Null(store.SavedSettings.CodexWslDistributionName);
     }
@@ -101,7 +112,10 @@ public sealed class CodexRuntimeSettingsEditorTests
         var editor = new CodexRuntimeSettingsEditor(store);
 
         var result = await editor.SaveAsync(
-            new CodexRuntimeSettingsDraft(CodexRuntimeMode.NativeWindows, "Ubuntu"),
+            new CodexRuntimeSettingsDraft(
+                ProviderSelectionMode.CodexOnly,
+                CodexRuntimeMode.NativeWindows,
+                "Ubuntu"),
             CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsSaveStatus.ValidationFailed, result.Status);
@@ -115,7 +129,7 @@ public sealed class CodexRuntimeSettingsEditorTests
         var editor = new CodexRuntimeSettingsEditor(store);
 
         var result = await editor.SaveAsync(
-            new CodexRuntimeSettingsDraft(CodexRuntimeMode.Wsl, "   "),
+            new CodexRuntimeSettingsDraft(ProviderSelectionMode.CodexOnly, CodexRuntimeMode.Wsl, "   "),
             CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsSaveStatus.Saved, result.Status);
@@ -129,7 +143,7 @@ public sealed class CodexRuntimeSettingsEditorTests
         var editor = new CodexRuntimeSettingsEditor(store);
 
         var result = await editor.SaveAsync(
-            new CodexRuntimeSettingsDraft((CodexRuntimeMode)999, null),
+            new CodexRuntimeSettingsDraft(ProviderSelectionMode.CodexOnly, (CodexRuntimeMode)999, null),
             CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsSaveStatus.ValidationFailed, result.Status);
@@ -146,7 +160,7 @@ public sealed class CodexRuntimeSettingsEditorTests
         var editor = new CodexRuntimeSettingsEditor(store);
 
         var result = await editor.SaveAsync(
-            new CodexRuntimeSettingsDraft(CodexRuntimeMode.Wsl, "Ubuntu"),
+            new CodexRuntimeSettingsDraft(ProviderSelectionMode.CodexOnly, CodexRuntimeMode.Wsl, "Ubuntu"),
             CancellationToken.None);
 
         Assert.Equal(CodexRuntimeSettingsSaveStatus.PersistenceFailed, result.Status);
@@ -154,6 +168,70 @@ public sealed class CodexRuntimeSettingsEditorTests
         Assert.DoesNotContain("C:\\", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("secret", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("exception", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExistingProviderModeSurvivesRuntimeSettingEdits()
+    {
+        var store = new RecordingSettingsStore(
+            new AppSettings
+            {
+                ProviderSelectionMode = ProviderSelectionMode.ClaudeOnly,
+                CodexRuntimeMode = CodexRuntimeMode.WslLoginShell
+            });
+        var editor = new CodexRuntimeSettingsEditor(store);
+
+        var result = await editor.SaveAsync(
+            new CodexRuntimeSettingsDraft(
+                ProviderSelectionMode.ClaudeOnly,
+                CodexRuntimeMode.Wsl,
+                "Ubuntu"),
+            CancellationToken.None);
+
+        Assert.Equal(CodexRuntimeSettingsSaveStatus.Saved, result.Status);
+        Assert.Equal(ProviderSelectionMode.ClaudeOnly, store.SavedSettings!.ProviderSelectionMode);
+        Assert.Equal(CodexRuntimeMode.Wsl, store.SavedSettings.CodexRuntimeMode);
+        Assert.Equal("Ubuntu", store.SavedSettings.CodexWslDistributionName);
+    }
+
+    [Fact]
+    public async Task UnchangedDraftDoesNotWriteSettings()
+    {
+        var store = new RecordingSettingsStore(
+            new AppSettings
+            {
+                ProviderSelectionMode = ProviderSelectionMode.CodexOnly,
+                CodexRuntimeMode = CodexRuntimeMode.Wsl,
+                CodexWslDistributionName = "Ubuntu"
+            });
+        var editor = new CodexRuntimeSettingsEditor(store);
+
+        var result = await editor.SaveAsync(
+            new CodexRuntimeSettingsDraft(
+                ProviderSelectionMode.CodexOnly,
+                CodexRuntimeMode.Wsl,
+                "Ubuntu"),
+            CancellationToken.None);
+
+        Assert.Equal(CodexRuntimeSettingsSaveStatus.Unchanged, result.Status);
+        Assert.Equal(0, store.SaveCallCount);
+    }
+
+    [Fact]
+    public async Task InvalidProviderModeIsRejected()
+    {
+        var store = new RecordingSettingsStore(new AppSettings());
+        var editor = new CodexRuntimeSettingsEditor(store);
+
+        var result = await editor.SaveAsync(
+            new CodexRuntimeSettingsDraft(
+                (ProviderSelectionMode)999,
+                CodexRuntimeMode.WslLoginShell,
+                null),
+            CancellationToken.None);
+
+        Assert.Equal(CodexRuntimeSettingsSaveStatus.ValidationFailed, result.Status);
+        Assert.Equal(0, store.SaveCallCount);
     }
 
     [Fact]
