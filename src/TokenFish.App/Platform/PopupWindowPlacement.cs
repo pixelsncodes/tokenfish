@@ -36,12 +36,21 @@ internal static class PopupWindowPlacement
             return;
         }
 
-        var borderColor = NativeMethods.DwmColorNone;
-        _ = NativeMethods.DwmSetWindowAttribute(
-            handle,
-            NativeMethods.DwmwaBorderColor,
-            ref borderColor,
-            (uint)Marshal.SizeOf<uint>());
+        try
+        {
+            var borderColor = NativeMethods.DwmColorNone;
+            _ = NativeMethods.DwmSetWindowAttribute(
+                handle,
+                NativeMethods.DwmwaBorderColor,
+                ref borderColor,
+                (uint)Marshal.SizeOf<uint>());
+        }
+        catch (DllNotFoundException)
+        {
+        }
+        catch (EntryPointNotFoundException)
+        {
+        }
     }
 
     public static void PositionBesideIcon(
@@ -78,12 +87,48 @@ internal static class PopupWindowPlacement
         return NativeMethods.SetForegroundWindow(WindowNative.GetWindowHandle(window));
     }
 
-    public static void EnsureBorderlessAfterShowing(Window window)
+    public static bool RemoveNativeFrameAfterShowing(Window window)
     {
-        if (window.AppWindow.Presenter is OverlappedPresenter presenter)
+        ArgumentNullException.ThrowIfNull(window);
+
+        var handle = WindowNative.GetWindowHandle(window);
+        if (handle == 0)
         {
-            presenter.SetBorderAndTitleBar(hasBorder: false, hasTitleBar: false);
+            return false;
         }
+
+        Marshal.SetLastPInvokeError(0);
+        var style = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GwlStyle);
+        if (style == 0 && Marshal.GetLastPInvokeError() != 0)
+        {
+            return false;
+        }
+
+        var maskedStyle = PopupWindowStyleMask.RemovePopupNonClientFlags(style);
+        if (maskedStyle != style)
+        {
+            Marshal.SetLastPInvokeError(0);
+            _ = NativeMethods.SetWindowLongPtr(handle, NativeMethods.GwlStyle, maskedStyle);
+            if (Marshal.GetLastPInvokeError() != 0)
+            {
+                return false;
+            }
+        }
+
+        _ = NativeMethods.SetWindowPos(
+            handle,
+            0,
+            0,
+            0,
+            0,
+            0,
+            NativeMethods.SwpNoMove |
+            NativeMethods.SwpNoSize |
+            NativeMethods.SwpNoZOrder |
+            NativeMethods.SwpNoActivate |
+            NativeMethods.SwpFrameChanged);
+        RemoveDwmBorder(handle);
+        return true;
     }
 
     public static bool IsForeground(Window window) =>
@@ -113,11 +158,17 @@ internal static class PopupWindowPlacement
 
     private static class NativeMethods
     {
+        public const int GwlStyle = -16;
         public const int GwlExStyle = -20;
         public const nint WsExAppWindow = 0x00040000;
         public const nint WsExToolWindow = 0x00000080;
         public const uint DwmwaBorderColor = 34;
         public const uint DwmColorNone = 0xFFFFFFFE;
+        public const uint SwpNoSize = 0x0001;
+        public const uint SwpNoMove = 0x0002;
+        public const uint SwpNoZOrder = 0x0004;
+        public const uint SwpNoActivate = 0x0010;
+        public const uint SwpFrameChanged = 0x0020;
 
         [DllImport("dwmapi.dll")]
         public static extern int DwmSetWindowAttribute(
@@ -131,6 +182,17 @@ internal static class PopupWindowPlacement
 
         [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
         public static extern nint SetWindowLongPtr(nint hWnd, int index, nint newLong);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SetWindowPos(
+            nint hWnd,
+            nint hWndInsertAfter,
+            int x,
+            int y,
+            int cx,
+            int cy,
+            uint flags);
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
