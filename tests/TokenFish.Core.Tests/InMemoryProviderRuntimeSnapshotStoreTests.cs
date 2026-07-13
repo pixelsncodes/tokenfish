@@ -226,6 +226,25 @@ public sealed class InMemoryProviderRuntimeSnapshotStoreTests
     }
 
     [Fact]
+    public void RereadingUnchangedSourceObservationDoesNotExtendFreshness()
+    {
+        var timeProvider = new ManualTimeProvider(
+            new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero));
+        var store = CreateStore(timeProvider, TimeSpan.FromMinutes(5));
+        var snapshot = CreateSnapshot(
+            ProviderKind.Claude,
+            capturedAt: timeProvider.GetUtcNow());
+
+        store.Store([snapshot]);
+        timeProvider.Advance(TimeSpan.FromMinutes(4));
+        store.Store([snapshot]);
+        timeProvider.Advance(TimeSpan.FromMinutes(2));
+
+        Assert.True(store.TryGetCurrent(ProviderKind.Claude, out var state));
+        Assert.Equal(DataFreshness.Stale, state.EffectiveFreshness);
+    }
+
+    [Fact]
     public void SafeDisconnectedNormalizedSnapshotIsStoredWithoutExceptionText()
     {
         var store = CreateStore();
@@ -339,7 +358,8 @@ public sealed class InMemoryProviderRuntimeSnapshotStoreTests
     private static ProviderUsageSnapshot CreateSnapshot(
         ProviderKind provider,
         long sessionTokens = 100,
-        DataFreshness freshness = DataFreshness.Live) =>
+        DataFreshness freshness = DataFreshness.Live,
+        DateTimeOffset? capturedAt = null) =>
         new(
             provider,
             ProviderConnectionState.Connected,
@@ -356,7 +376,7 @@ public sealed class InMemoryProviderRuntimeSnapshotStoreTests
                 1_000,
                 DataAuthority.TokenFishDerived,
                 freshness),
-            DateTimeOffset.UtcNow);
+            capturedAt ?? DateTimeOffset.UtcNow);
 
     private static ProviderUsageSnapshot CreateUnavailableSnapshot(ProviderKind provider) =>
         new(
