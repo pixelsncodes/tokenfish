@@ -15,7 +15,7 @@ namespace TokenFish.App;
 public sealed partial class MainWindow : Window
 {
     private const double PopupRailWidth = 300;
-    private const double FishWidth = 26;
+    private const double FishWidth = 25;
     private static readonly Brush PopupTextPrimaryBrush = GetPopupBrush("PopupTextPrimaryBrush");
     private static readonly Brush PopupTextSecondaryBrush = GetPopupBrush("PopupTextSecondaryBrush");
     private readonly PopupDisplayStateUpdatePlanner _updatePlanner = new();
@@ -336,81 +336,42 @@ public sealed partial class MainWindow : Window
             canvas.Children.Add(pellet);
         }
 
-        var fish = new Canvas { Width = fishWidth, Height = 18 };
+        var fish = new Canvas { Width = fishWidth, Height = 25 };
         AutomationProperties.SetAccessibilityView(fish, AccessibilityView.Raw);
         var tail = new Polygon
         {
-            Points = new PointCollection
-            {
-                new Windows.Foundation.Point(8, 9),
-                new Windows.Foundation.Point(0, 2),
-                new Windows.Foundation.Point(2, 9),
-                new Windows.Foundation.Point(0, 16)
-            },
+            Points = CreateFishBodyPoints(isOpenMouth: true),
             Fill = accent
         };
+        Canvas.SetLeft(tail, 1);
+        Canvas.SetTop(tail, 1);
         AutomationProperties.SetAccessibilityView(tail, AccessibilityView.Raw);
         fish.Children.Add(tail);
-        var body = new Ellipse
+        var fin = new Rectangle
         {
-            Width = 18,
-            Height = 11,
-            Fill = accent
-        };
-        Canvas.SetLeft(body, 6);
-        Canvas.SetTop(body, 3.5);
-        AutomationProperties.SetAccessibilityView(body, AccessibilityView.Raw);
-        fish.Children.Add(body);
-        var dorsalFin = new Polygon
-        {
-            Points = new PointCollection
-            {
-                new Windows.Foundation.Point(11, 5),
-                new Windows.Foundation.Point(15, 0),
-                new Windows.Foundation.Point(18, 5)
-            },
+            Width = 8,
+            Height = 8,
             Fill = accent,
-            Opacity = 0.85
+            Opacity = 0.8,
+            RenderTransform = new RotateTransform { Angle = 45, CenterX = 4, CenterY = 4 }
         };
-        AutomationProperties.SetAccessibilityView(dorsalFin, AccessibilityView.Raw);
-        fish.Children.Add(dorsalFin);
-        var eye = new Ellipse
+        Canvas.SetLeft(fin, -3);
+        Canvas.SetTop(fin, 9);
+        AutomationProperties.SetAccessibilityView(fin, AccessibilityView.Raw);
+        fish.Children.Add(fin);
+        var eye = new Rectangle
         {
-            Width = 3,
-            Height = 3,
-            Fill = CreateBrush(0xFF, 0x0B, 0x11, 0x1A)
+            Width = 4,
+            Height = 4,
+            Fill = CreateBrush(0xFF, 0x07, 0x10, 0x16)
         };
-        Canvas.SetLeft(eye, 19);
+        Canvas.SetLeft(eye, 10);
         Canvas.SetTop(eye, 6);
         AutomationProperties.SetAccessibilityView(eye, AccessibilityView.Raw);
         fish.Children.Add(eye);
-        var upperJaw = new Polygon
-        {
-            Points = new PointCollection
-            {
-                new Windows.Foundation.Point(19, 7),
-                new Windows.Foundation.Point(26, 6),
-                new Windows.Foundation.Point(23, 9)
-            },
-            Fill = accent
-        };
-        AutomationProperties.SetAccessibilityView(upperJaw, AccessibilityView.Raw);
-        fish.Children.Add(upperJaw);
-        var lowerJaw = new Polygon
-        {
-            Points = new PointCollection
-            {
-                new Windows.Foundation.Point(19, 11),
-                new Windows.Foundation.Point(26, 12),
-                new Windows.Foundation.Point(23, 9)
-            },
-            Fill = accent
-        };
-        AutomationProperties.SetAccessibilityView(lowerJaw, AccessibilityView.Raw);
-        fish.Children.Add(lowerJaw);
         canvas.Children.Add(fish);
-        Canvas.SetTop(fish, 1);
-        StartFishIdleAnimation(tail, upperJaw, lowerJaw);
+        Canvas.SetTop(fish, -1.5);
+        StartFishMouthAnimation(tail);
 
         var view = new QuotaRailView(canvas, fish, railWidth, fishWidth);
         view.Update(quotaWindow);
@@ -428,64 +389,47 @@ public sealed partial class MainWindow : Window
     private static Brush GetPopupBrush(string resourceKey) =>
         (Brush)Application.Current.Resources[resourceKey];
 
-    private static void StartFishIdleAnimation(
-        Polygon tail,
-        Polygon upperJaw,
-        Polygon lowerJaw)
+    private static PointCollection CreateFishBodyPoints(bool isOpenMouth) => new()
+    {
+        new Windows.Foundation.Point(0, 0),
+        new Windows.Foundation.Point(17.94, 0),
+        new Windows.Foundation.Point(23, isOpenMouth ? 7.82 : 10.12),
+        new Windows.Foundation.Point(isOpenMouth ? 16.79 : 18.86, 11.5),
+        new Windows.Foundation.Point(23, isOpenMouth ? 15.18 : 12.88),
+        new Windows.Foundation.Point(17.94, 23),
+        new Windows.Foundation.Point(0, 23),
+        new Windows.Foundation.Point(2.76, 14.26),
+        new Windows.Foundation.Point(0, 11.5),
+        new Windows.Foundation.Point(2.76, 8.74)
+    };
+
+    private static void StartFishMouthAnimation(Polygon body)
     {
         if (!FishAnimationSettings.ShouldAnimate(SystemAnimationsEnabled()))
         {
             return;
         }
 
-        var transform = new CompositeTransform();
-        tail.RenderTransform = transform;
-        tail.RenderTransformOrigin = new Windows.Foundation.Point(1, 0.5);
-        var animation = new DoubleAnimation
+        var animation = new ObjectAnimationUsingKeyFrames
         {
-            From = -7,
-            To = 7,
-            Duration = TimeSpan.FromMilliseconds(900),
-            AutoReverse = true,
+            Duration = TimeSpan.FromMilliseconds(340),
             RepeatBehavior = RepeatBehavior.Forever,
             EnableDependentAnimation = true
         };
-        Storyboard.SetTarget(animation, transform);
-        Storyboard.SetTargetProperty(animation, "Rotation");
-
-        var upperJawTransform = new CompositeTransform();
-        upperJaw.RenderTransform = upperJawTransform;
-        upperJaw.RenderTransformOrigin = new Windows.Foundation.Point(0.2, 0.5);
-        var upperJawAnimation = new DoubleAnimation
+        animation.KeyFrames.Add(new DiscreteObjectKeyFrame
         {
-            From = 0,
-            To = -0.9,
-            Duration = TimeSpan.FromMilliseconds(450),
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EnableDependentAnimation = true
-        };
-        Storyboard.SetTarget(upperJawAnimation, upperJawTransform);
-        Storyboard.SetTargetProperty(upperJawAnimation, "TranslateY");
-
-        var lowerJawTransform = new CompositeTransform();
-        lowerJaw.RenderTransform = lowerJawTransform;
-        lowerJaw.RenderTransformOrigin = new Windows.Foundation.Point(0.2, 0.5);
-        var lowerJawAnimation = new DoubleAnimation
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero),
+            Value = CreateFishBodyPoints(isOpenMouth: true)
+        });
+        animation.KeyFrames.Add(new DiscreteObjectKeyFrame
         {
-            From = 0,
-            To = 0.9,
-            Duration = TimeSpan.FromMilliseconds(450),
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EnableDependentAnimation = true
-        };
-        Storyboard.SetTarget(lowerJawAnimation, lowerJawTransform);
-        Storyboard.SetTargetProperty(lowerJawAnimation, "TranslateY");
+            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(170)),
+            Value = CreateFishBodyPoints(isOpenMouth: false)
+        });
         var storyboard = new Storyboard();
+        Storyboard.SetTarget(animation, body);
+        Storyboard.SetTargetProperty(animation, "Points");
         storyboard.Children.Add(animation);
-        storyboard.Children.Add(upperJawAnimation);
-        storyboard.Children.Add(lowerJawAnimation);
         storyboard.Begin();
     }
 
