@@ -1,3 +1,5 @@
+using TokenFish.Core.Providers;
+
 namespace TokenFish.Infrastructure;
 
 public sealed class NotificationAreaController : IDisposable
@@ -11,6 +13,7 @@ public sealed class NotificationAreaController : IDisposable
 
     private bool _initialized;
     private bool _shutdownStarted;
+    private ProviderRefreshStatus _refreshStatus;
     private bool _refreshInProgress;
     private bool _disposed;
 
@@ -32,9 +35,12 @@ public sealed class NotificationAreaController : IDisposable
         _toggleWindowAsync = toggleWindowAsync;
         _openSettingsAsync = openSettingsAsync;
         _exitAsync = exitAsync;
+        _refreshStatus = runtimeHost.RefreshStatus;
 
         _icon.CommandRequested += OnCommandRequested;
         _icon.ShellFaulted += OnShellFaulted;
+        _runtimeHost.RefreshStatusChanged += OnRefreshStatusChanged;
+        UpdateRefreshCommandAvailability();
     }
 
     public void Initialize()
@@ -82,6 +88,7 @@ public sealed class NotificationAreaController : IDisposable
 
         _icon.CommandRequested -= OnCommandRequested;
         _icon.ShellFaulted -= OnShellFaulted;
+        _runtimeHost.RefreshStatusChanged -= OnRefreshStatusChanged;
         _icon.Dispose();
     }
 
@@ -135,13 +142,18 @@ public sealed class NotificationAreaController : IDisposable
     {
         lock (_sync)
         {
-            if (_disposed || _shutdownStarted || _refreshInProgress)
+            if (_disposed ||
+                _shutdownStarted ||
+                _refreshInProgress ||
+                _refreshStatus.IsRefreshActive)
             {
                 return;
             }
 
             _refreshInProgress = true;
         }
+
+        UpdateRefreshCommandAvailability();
 
         try
         {
@@ -153,6 +165,8 @@ public sealed class NotificationAreaController : IDisposable
             {
                 _refreshInProgress = false;
             }
+
+            UpdateRefreshCommandAvailability();
         }
     }
 
@@ -185,5 +199,33 @@ public sealed class NotificationAreaController : IDisposable
         {
             _runtimeHost.ReportShellFault();
         }
+    }
+
+    private void OnRefreshStatusChanged(ProviderRefreshStatus status)
+    {
+        lock (_sync)
+        {
+            _refreshStatus = status;
+        }
+
+        UpdateRefreshCommandAvailability();
+    }
+
+    private void UpdateRefreshCommandAvailability()
+    {
+        NotificationAreaRefreshCommandState state;
+        lock (_sync)
+        {
+            if (_disposed || _shutdownStarted)
+            {
+                return;
+            }
+
+            state = _refreshInProgress || _refreshStatus.IsRefreshActive
+                ? NotificationAreaRefreshCommandState.Updating
+                : NotificationAreaRefreshCommandState.Available;
+        }
+
+        _icon.SetRefreshCommandState(state);
     }
 }

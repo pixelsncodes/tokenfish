@@ -1,4 +1,5 @@
 using TokenFish.Core.Models;
+using TokenFish.Core.Providers;
 using TokenFish.Core.Settings;
 
 namespace TokenFish.Infrastructure;
@@ -17,6 +18,7 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
     private Task? _lifecycleCompletionObserver;
     private Task? _shutdownTask;
     private ApplicationRuntimeStatus _status = ApplicationRuntimeStatus.Stopped;
+    private ProviderRefreshStatus _refreshStatus = ProviderRefreshStatus.Initial;
     private bool _shutdownStarted;
 
     public TokenFishApplicationRuntimeHost(
@@ -42,6 +44,8 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
 
     public event Action<ApplicationRuntimeStatus>? StatusChanged;
 
+    public event Action<ProviderRefreshStatus>? RefreshStatusChanged;
+
     public ApplicationRuntimeStatus Status
     {
         get
@@ -49,6 +53,17 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
             lock (_sync)
             {
                 return _status;
+            }
+        }
+    }
+
+    public ProviderRefreshStatus RefreshStatus
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _refreshStatus;
             }
         }
     }
@@ -204,6 +219,8 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
             }
 
             var lifecycle = services.ProviderRefreshLifecycle;
+            lifecycle.RefreshStatusChanged += OnRefreshStatusChanged;
+            SetRefreshStatus(lifecycle.RefreshStatus);
             var startTask = lifecycle.StartAsync(_shutdownCancellationTokenSource.Token);
             var completion = lifecycle.Completion;
             _lifecycleCompletionObserver = ObserveLifecycleCompletionAsync(completion);
@@ -290,6 +307,7 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
             {
                 await services.ProviderRefreshLifecycle.StopAsync(CancellationToken.None)
                     .ConfigureAwait(false);
+                services.ProviderRefreshLifecycle.RefreshStatusChanged -= OnRefreshStatusChanged;
             }
 
             if (startupTask is not null)
@@ -341,5 +359,23 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
 
         _status = status;
         StatusChanged?.Invoke(status);
+    }
+
+    private void OnRefreshStatusChanged(ProviderRefreshStatus status) =>
+        SetRefreshStatus(status);
+
+    private void SetRefreshStatus(ProviderRefreshStatus status)
+    {
+        lock (_sync)
+        {
+            if (_refreshStatus == status)
+            {
+                return;
+            }
+
+            _refreshStatus = status;
+        }
+
+        RefreshStatusChanged?.Invoke(status);
     }
 }

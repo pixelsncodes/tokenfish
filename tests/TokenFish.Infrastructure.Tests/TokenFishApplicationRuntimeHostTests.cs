@@ -164,6 +164,48 @@ public sealed class TokenFishApplicationRuntimeHostTests
     }
 
     [Fact]
+    public async Task RefreshStatusChangesAreRelayedFromExistingLifecycle()
+    {
+        var lifecycle = new RecordingRefreshLifecycle();
+        var host = CreateHost(createServices: (_, _) => new RecordingRuntimeServices(lifecycle));
+        var refreshStatuses = new List<ProviderRefreshStatus>();
+        host.RefreshStatusChanged += refreshStatuses.Add;
+
+        await host.StartAsync(CancellationToken.None);
+        lifecycle.SetRefreshStatus(new ProviderRefreshStatus(
+            IsRefreshActive: true,
+            LatestAttemptedAtUtc: new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
+            LatestSucceededAtUtc: null,
+            ProviderRefreshOutcome.Refreshing,
+            Version: 1));
+
+        Assert.True(host.RefreshStatus.IsRefreshActive);
+        Assert.Equal(ProviderRefreshOutcome.Refreshing, host.RefreshStatus.Outcome);
+        Assert.Contains(refreshStatuses, status => status.IsRefreshActive);
+    }
+
+    [Fact]
+    public async Task RefreshFailureDoesNotTerminateApplicationServices()
+    {
+        var lifecycle = new RecordingRefreshLifecycle
+        {
+            RefreshAsyncCallback = _ =>
+                Task.FromException<IReadOnlyList<ProviderUsageSnapshot>>(
+                    new InvalidOperationException("raw provider payload"))
+        };
+        var services = new RecordingRuntimeServices(lifecycle);
+        var host = CreateHost(createServices: (_, _) => services);
+
+        await host.StartAsync(CancellationToken.None);
+        await host.RefreshAsync(CancellationToken.None);
+
+        Assert.Same(services, host.Services);
+        Assert.Equal(0, services.DisposeCallCount);
+        Assert.Equal(ApplicationRuntimeIssue.RefreshFailed, host.Status.Issue);
+        Assert.DoesNotContain("payload", host.Status.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task DisabledProviderLazinessRemainsIntact()
     {
         var createCallCount = 0;
@@ -287,16 +329,14 @@ public sealed class TokenFishApplicationRuntimeHostTests
 
         public Func<CancellationToken, Task>? StartAsyncCallback { get; init; }
 
+        public Func<CancellationToken, Task<IReadOnlyList<ProviderUsageSnapshot>>>? RefreshAsyncCallback { get; init; }
+
         public Action? OnStop { get; init; }
 
         public ProviderRefreshStatus RefreshStatus { get; private set; } =
             ProviderRefreshStatus.Initial;
 
-        public event Action<ProviderRefreshStatus>? RefreshStatusChanged
-        {
-            add { }
-            remove { }
-        }
+        public event Action<ProviderRefreshStatus>? RefreshStatusChanged;
 
         public Task Completion => _completion.Task;
 
@@ -308,6 +348,7 @@ public sealed class TokenFishApplicationRuntimeHostTests
 
         public Task<IReadOnlyList<ProviderUsageSnapshot>> RefreshAsync(
             CancellationToken cancellationToken) =>
+            RefreshAsyncCallback?.Invoke(cancellationToken) ??
             Task.FromResult<IReadOnlyList<ProviderUsageSnapshot>>([]);
 
         public Task StopAsync(CancellationToken cancellationToken)
@@ -325,5 +366,11 @@ public sealed class TokenFishApplicationRuntimeHostTests
         }
 
         public void FaultCompletion(Exception exception) => _completion.TrySetException(exception);
+
+        public void SetRefreshStatus(ProviderRefreshStatus status)
+        {
+            RefreshStatus = status;
+            RefreshStatusChanged?.Invoke(status);
+        }
     }
 }

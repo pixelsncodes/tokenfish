@@ -20,9 +20,12 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly NativeMethods.WndProc _windowProcedure;
     private readonly uint _taskbarCreatedMessage;
+    private readonly object _sync = new();
 
     private nint _previousWindowProcedure;
     private nint _iconHandle;
+    private NotificationAreaRefreshCommandState _refreshCommandState =
+        NotificationAreaRefreshCommandState.Available;
     private bool _subclassed;
     private bool _added;
     private bool _removed;
@@ -80,6 +83,19 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
         {
             RaiseShellFaulted();
         }
+    }
+
+    public void SetRefreshCommandState(NotificationAreaRefreshCommandState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        if (_dispatcherQueue.HasThreadAccess)
+        {
+            SetRefreshCommandStateOnDispatcher(state);
+            return;
+        }
+
+        _dispatcherQueue.TryEnqueue(() => SetRefreshCommandStateOnDispatcher(state));
     }
 
     public void Dispose()
@@ -301,6 +317,12 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
 
     private void ShowContextMenu()
     {
+        NotificationAreaRefreshCommandState refreshCommandState;
+        lock (_sync)
+        {
+            refreshCommandState = _refreshCommandState;
+        }
+
         var menuHandle = NativeMethods.CreatePopupMenu();
         if (menuHandle == 0)
         {
@@ -309,7 +331,10 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
 
         try
         {
-            if (!NativeMethods.AppendMenu(menuHandle, NativeMethods.MfString, RefreshCommandId, "Refresh") ||
+            var refreshFlags = refreshCommandState.IsEnabled
+                ? NativeMethods.MfString
+                : NativeMethods.MfString | NativeMethods.MfGrayed;
+            if (!NativeMethods.AppendMenu(menuHandle, refreshFlags, RefreshCommandId, refreshCommandState.Label) ||
                 !NativeMethods.AppendMenu(menuHandle, NativeMethods.MfString, SettingsCommandId, "Settings...") ||
                 !NativeMethods.AppendMenu(menuHandle, NativeMethods.MfSeparator, 0, null) ||
                 !NativeMethods.AppendMenu(menuHandle, NativeMethods.MfString, ExitCommandId, "Exit"))
@@ -333,7 +358,10 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
 
             if (command == RefreshCommandId)
             {
-                DispatchCommand(NotificationAreaCommand.Refresh);
+                if (refreshCommandState.IsEnabled)
+                {
+                    DispatchCommand(NotificationAreaCommand.Refresh);
+                }
             }
             else if (command == SettingsCommandId)
             {
@@ -370,6 +398,19 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
     private void RaiseShellFaulted()
     {
         _dispatcherQueue.TryEnqueue(() => ShellFaulted?.Invoke());
+    }
+
+    private void SetRefreshCommandStateOnDispatcher(NotificationAreaRefreshCommandState state)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        lock (_sync)
+        {
+            _refreshCommandState = state;
+        }
     }
 
     private void CleanupNativeState()
@@ -422,6 +463,7 @@ internal sealed class NativeNotificationAreaIcon : INotificationAreaIcon
         public const uint LrLoadFromFile = 0x00000010;
         public const uint LrDefaultSize = 0x00000040;
         public const uint MfString = 0x00000000;
+        public const uint MfGrayed = 0x00000001;
         public const uint MfSeparator = 0x00000800;
         public const uint TpmRightButton = 0x0002;
         public const uint TpmReturnCmd = 0x0100;

@@ -9,4 +9,6 @@ public interface INotificationAreaIcon : IDisposable
     void Initialize();
 
     void Restore();
+
+    void SetRefreshCommandState(NotificationAreaRefreshCommandState state);
 }

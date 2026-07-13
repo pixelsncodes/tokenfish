@@ -1,4 +1,5 @@
 using TokenFish.Infrastructure;
+using TokenFish.Core.Providers;
 
 namespace TokenFish.Infrastructure.Tests;
 
@@ -79,6 +80,84 @@ public sealed class NotificationAreaControllerTests
     }
 
     [Fact]
+    public async Task RuntimeActiveRefreshDisablesManualRefreshCommand()
+    {
+        var host = new RecordingRuntimeHost();
+        var icon = new RecordingNotificationAreaIcon();
+        using var controller = CreateController(icon: icon, host: host);
+        controller.Initialize();
+
+        host.SetRefreshStatus(new ProviderRefreshStatus(
+            IsRefreshActive: true,
+            LatestAttemptedAtUtc: new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
+            LatestSucceededAtUtc: null,
+            ProviderRefreshOutcome.Refreshing,
+            Version: 1));
+        icon.RaiseCommand(NotificationAreaCommand.Refresh);
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+
+        Assert.Equal(0, host.RefreshCallCount);
+        Assert.Equal(NotificationAreaRefreshCommandState.Updating, icon.RefreshCommandState);
+
+        host.SetRefreshStatus(new ProviderRefreshStatus(
+            IsRefreshActive: false,
+            LatestAttemptedAtUtc: new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
+            LatestSucceededAtUtc: new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
+            ProviderRefreshOutcome.Succeeded,
+            Version: 2));
+
+        Assert.Equal(NotificationAreaRefreshCommandState.Available, icon.RefreshCommandState);
+    }
+
+    [Fact]
+    public async Task ManualRefreshDisablesCommandUntilCompletion()
+    {
+        var host = new RecordingRuntimeHost();
+        var refreshEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var refreshRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.RefreshAsyncCallback = async _ =>
+        {
+            refreshEntered.SetResult();
+            await refreshRelease.Task;
+        };
+        var icon = new RecordingNotificationAreaIcon();
+        using var controller = CreateController(icon: icon, host: host);
+        controller.Initialize();
+
+        icon.RaiseCommand(NotificationAreaCommand.Refresh);
+        await refreshEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(NotificationAreaRefreshCommandState.Updating, icon.RefreshCommandState);
+
+        refreshRelease.SetResult();
+        await host.WaitForRefreshCountAsync(1);
+        await WaitForRefreshCommandStateAsync(icon, NotificationAreaRefreshCommandState.Available);
+
+        Assert.Equal(NotificationAreaRefreshCommandState.Available, icon.RefreshCommandState);
+    }
+
+    [Fact]
+    public async Task ManualRefreshCommandIsRestoredAfterExpectedFailure()
+    {
+        var host = new RecordingRuntimeHost
+        {
+            RefreshAsyncCallback = _ => Task.FromException(
+                new InvalidOperationException("synthetic provider failure"))
+        };
+        var icon = new RecordingNotificationAreaIcon();
+        using var controller = CreateController(icon: icon, host: host);
+        controller.Initialize();
+
+        icon.RaiseCommand(NotificationAreaCommand.Refresh);
+        await host.WaitForRefreshCountAsync(1);
+        await WaitForRefreshCommandStateAsync(icon, NotificationAreaRefreshCommandState.Available);
+
+        Assert.Equal(1, host.RefreshCallCount);
+        Assert.Equal(0, host.ShellFaultCallCount);
+        Assert.Equal(NotificationAreaRefreshCommandState.Available, icon.RefreshCommandState);
+    }
+
+    [Fact]
     public async Task SettingsDispatchesOpenWithoutRefreshingRuntime()
     {
         var settingsOpenCount = 0;
@@ -154,6 +233,32 @@ public sealed class NotificationAreaControllerTests
     }
 
     [Fact]
+    public async Task RefreshStatusCompletionAfterDisposalDoesNotReenableCommand()
+    {
+        var host = new RecordingRuntimeHost();
+        var icon = new RecordingNotificationAreaIcon();
+        var controller = CreateController(icon: icon, host: host);
+        controller.Initialize();
+        host.SetRefreshStatus(new ProviderRefreshStatus(
+            IsRefreshActive: true,
+            LatestAttemptedAtUtc: new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
+            LatestSucceededAtUtc: null,
+            ProviderRefreshOutcome.Refreshing,
+            Version: 1));
+
+        controller.Dispose();
+        host.SetRefreshStatus(new ProviderRefreshStatus(
+            IsRefreshActive: false,
+            LatestAttemptedAtUtc: new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
+            LatestSucceededAtUtc: new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
+            ProviderRefreshOutcome.Succeeded,
+            Version: 2));
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+
+        Assert.Equal(NotificationAreaRefreshCommandState.Updating, icon.RefreshCommandState);
+    }
+
+    [Fact]
     public void RepeatedDisposalIsSafe()
     {
         var icon = new RecordingNotificationAreaIcon();
@@ -194,6 +299,18 @@ public sealed class NotificationAreaControllerTests
             openSettingsAsync ?? (() => Task.CompletedTask),
             exitAsync ?? (() => Task.CompletedTask));
 
+    private static async Task WaitForRefreshCommandStateAsync(
+        RecordingNotificationAreaIcon icon,
+        NotificationAreaRefreshCommandState state)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        while (icon.RefreshCommandState != state)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(10), timeout.Token);
+        }
+    }
+
     private sealed class RecordingNotificationAreaIcon : INotificationAreaIcon
     {
         public event Action<NotificationAreaCommand>? CommandRequested;
@@ -206,11 +323,17 @@ public sealed class NotificationAreaControllerTests
 
         public int DisposeCallCount { get; private set; }
 
+        public NotificationAreaRefreshCommandState RefreshCommandState { get; private set; } =
+            NotificationAreaRefreshCommandState.Available;
+
         public void Initialize() => InitializeCallCount++;
 
         public void Restore() => RestoreCallCount++;
 
         public void Dispose() => DisposeCallCount++;
+
+        public void SetRefreshCommandState(NotificationAreaRefreshCommandState state) =>
+            RefreshCommandState = state;
 
         public void RaiseCommand(NotificationAreaCommand command) =>
             CommandRequested?.Invoke(command);
@@ -225,9 +348,14 @@ public sealed class NotificationAreaControllerTests
         public ApplicationRuntimeStatus Status { get; private set; } =
             ApplicationRuntimeStatus.Running;
 
+        public ProviderRefreshStatus RefreshStatus { get; private set; } =
+            ProviderRefreshStatus.Initial;
+
         public TokenFish.Core.Models.AppSettings? CurrentSettings { get; }
 
         public event Action<ApplicationRuntimeStatus>? StatusChanged;
+
+        public event Action<ProviderRefreshStatus>? RefreshStatusChanged;
 
         public int RefreshCallCount { get; private set; }
 
@@ -242,9 +370,17 @@ public sealed class NotificationAreaControllerTests
             RefreshCallCount++;
             _refreshSignal.Release();
 
-            if (RefreshAsyncCallback is not null)
+            try
             {
-                await RefreshAsyncCallback(cancellationToken);
+                if (RefreshAsyncCallback is not null)
+                {
+                    await RefreshAsyncCallback(cancellationToken);
+                }
+            }
+            catch
+            {
+                Status = ApplicationRuntimeStatus.RefreshFaulted;
+                StatusChanged?.Invoke(Status);
             }
         }
 
@@ -255,6 +391,12 @@ public sealed class NotificationAreaControllerTests
             ShellFaultCallCount++;
             Status = ApplicationRuntimeStatus.ShellFaulted;
             StatusChanged?.Invoke(Status);
+        }
+
+        public void SetRefreshStatus(ProviderRefreshStatus status)
+        {
+            RefreshStatus = status;
+            RefreshStatusChanged?.Invoke(status);
         }
 
         public async Task WaitForRefreshCountAsync(int expectedCount)
