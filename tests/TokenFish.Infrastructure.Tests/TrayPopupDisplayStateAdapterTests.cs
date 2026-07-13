@@ -786,6 +786,31 @@ public sealed class TrayPopupDisplayStateAdapterTests
     }
 
     [Fact]
+    public void StaleClaudeSourceObservationAddsAccurateOutdatedHint()
+    {
+        var now = new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero);
+        var observedAt = now.AddMinutes(-6);
+        var provider = SingleProvider(
+            CreateSnapshot(
+                ProviderKind.Claude,
+                capturedAt: observedAt,
+                quotaWindows:
+                [
+                    ClaudeQuotaWindow(
+                        "claude:status-line:five-hour",
+                        "5h",
+                        14m,
+                        observedAt)
+                ],
+                sourceObservedAt: observedAt),
+            new AppSettings { ProviderSelectionMode = ProviderSelectionMode.ClaudeOnly },
+            new ManualTimeProvider(now));
+
+        Assert.Equal("Updated 6 min ago · Reported by Claude · May be outdated", provider.FooterText);
+        Assert.True(provider.IsStale);
+    }
+
+    [Fact]
     public void FooterDoesNotExposeInternalProvenanceEnums()
     {
         var provider = SingleProvider(CreateSnapshot(
@@ -906,7 +931,8 @@ public sealed class TrayPopupDisplayStateAdapterTests
         ProviderConnectionState connectionState = ProviderConnectionState.Connected,
         DateTimeOffset? capturedAt = null,
         IReadOnlyList<NormalizedQuotaWindow>? quotaWindows = null,
-        IReadOnlyList<NormalizedActivityMetric>? activityMetrics = null) =>
+        IReadOnlyList<NormalizedActivityMetric>? activityMetrics = null,
+        DateTimeOffset? sourceObservedAt = null) =>
         new(
             provider,
             connectionState,
@@ -916,7 +942,8 @@ public sealed class TrayPopupDisplayStateAdapterTests
             new TokenCountMetric(weeklyTokens, authority, DataFreshness.Live),
             capturedAt ?? DateTimeOffset.UtcNow,
             quotaWindows,
-            activityMetrics);
+            activityMetrics,
+            sourceObservedAt);
 
     private static NormalizedQuotaWindow QuotaWindow(
         string windowId,
@@ -943,7 +970,8 @@ public sealed class TrayPopupDisplayStateAdapterTests
     private static NormalizedQuotaWindow ClaudeQuotaWindow(
         string windowId,
         string displayLabel,
-        decimal usedPercentage) =>
+        decimal usedPercentage,
+        DateTimeOffset? capturedAt = null) =>
         new(
             ProviderKind.Claude,
             windowId,
@@ -953,7 +981,7 @@ public sealed class TrayPopupDisplayStateAdapterTests
             new DateTimeOffset(2026, 7, 19, 22, 0, 0, TimeSpan.Zero),
             displayLabel == "5h" ? TimeSpan.FromMinutes(300) : TimeSpan.FromMinutes(10_080),
             UsageMetricAvailability.Available,
-            new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
+            capturedAt ?? new DateTimeOffset(2026, 7, 12, 8, 0, 0, TimeSpan.Zero),
             DataAuthority.LocalProviderReported,
             DataFreshness.Live,
             "claude-status-line-bridge");

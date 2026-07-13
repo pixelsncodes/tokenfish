@@ -162,6 +162,7 @@ public sealed class ProviderUsageContractTests
     {
         var resetAt = new DateTimeOffset(2026, 7, 12, 1, 0, 0, TimeSpan.FromHours(-7));
         var capturedAt = new DateTimeOffset(2026, 7, 12, 0, 30, 0, TimeSpan.FromHours(-7));
+        var sourceObservedAt = new DateTimeOffset(2026, 7, 12, 0, 0, 0, TimeSpan.FromHours(-7));
 
         var snapshot = new ProviderUsageSnapshot(
             ProviderKind.Codex,
@@ -170,12 +171,15 @@ public sealed class ProviderUsageContractTests
             resetAt,
             TokenCountMetric.Unavailable(DataAuthority.TokenFishDerived, DataFreshness.Unknown),
             TokenCountMetric.Unavailable(DataAuthority.TokenFishDerived, DataFreshness.Unknown),
-            capturedAt);
+            capturedAt,
+            sourceObservedAt: sourceObservedAt);
 
         Assert.Equal(TimeSpan.Zero, snapshot.UsageWindowResetAt?.Offset);
         Assert.Equal(resetAt.ToUniversalTime(), snapshot.UsageWindowResetAt);
         Assert.Equal(TimeSpan.Zero, snapshot.CapturedAt.Offset);
         Assert.Equal(capturedAt.ToUniversalTime(), snapshot.CapturedAt);
+        Assert.Equal(TimeSpan.Zero, snapshot.SourceObservedAt?.Offset);
+        Assert.Equal(sourceObservedAt.ToUniversalTime(), snapshot.SourceObservedAt);
     }
 
     [Fact]

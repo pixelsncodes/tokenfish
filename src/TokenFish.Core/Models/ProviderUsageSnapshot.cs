@@ -23,6 +23,13 @@ public sealed record ProviderUsageSnapshot
 
     public DateTimeOffset CapturedAt { get; }
 
+    /// <summary>
+    /// The time at which the provider observed the source data, when that time is
+    /// authoritative for runtime freshness. A collection's <see cref="CapturedAt"/>
+    /// remains independent and may represent metric-level capture timing.
+    /// </summary>
+    public DateTimeOffset? SourceObservedAt { get; }
+
     public ProviderUsageSnapshot(
         ProviderKind provider,
         ProviderConnectionState connectionState,
@@ -32,7 +39,8 @@ public sealed record ProviderUsageSnapshot
         TokenCountMetric weeklyTokens,
         DateTimeOffset capturedAt,
         IReadOnlyList<NormalizedQuotaWindow>? quotaWindows = null,
-        IReadOnlyList<NormalizedActivityMetric>? activityMetrics = null)
+        IReadOnlyList<NormalizedActivityMetric>? activityMetrics = null,
+        DateTimeOffset? sourceObservedAt = null)
     {
         Provider = provider;
         ConnectionState = connectionState;
@@ -43,5 +51,6 @@ public sealed record ProviderUsageSnapshot
         QuotaWindows = quotaWindows?.ToArray() ?? [];
         ActivityMetrics = activityMetrics?.ToArray() ?? [];
         CapturedAt = capturedAt.ToUniversalTime();
+        SourceObservedAt = sourceObservedAt?.ToUniversalTime();
     }
 }

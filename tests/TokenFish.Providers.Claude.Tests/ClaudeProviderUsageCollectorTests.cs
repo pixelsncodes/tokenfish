@@ -100,6 +100,15 @@ public sealed class ClaudeProviderUsageCollectorTests
     }
 
     [Fact]
+    public async Task SourceObservationTimeControlsRuntimeFreshness()
+    {
+        var observedAt = Now.AddMinutes(-1);
+        var snapshot = await CollectAsync(new ClaudeBridgeState(Window(24m, observedAt), null));
+
+        Assert.Equal(observedAt, snapshot.SourceObservedAt);
+    }
+
+    [Fact]
     public async Task OldSourceObservationsMapStale()
     {
         var snapshot = await CollectAsync(new ClaudeBridgeState(Window(24m, Now.AddMinutes(-3)), null));

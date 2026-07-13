@@ -101,11 +101,21 @@ public sealed class InMemoryProviderRuntimeSnapshotStore : IProviderRuntimeSnaps
         }
 
         var age = _timeProvider.GetUtcNow().ToUniversalTime() -
-            storedSnapshot.Snapshot.CapturedAt;
+            GetFreshnessOrigin(storedSnapshot);
 
         return age <= _freshnessThreshold
             ? DataFreshness.Live
             : DataFreshness.Stale;
+    }
+
+    private static DateTimeOffset GetFreshnessOrigin(StoredSnapshot storedSnapshot)
+    {
+        var sourceObservedAt = storedSnapshot.Snapshot.SourceObservedAt;
+        return sourceObservedAt is { } timestamp &&
+            timestamp != DateTimeOffset.MinValue &&
+            timestamp <= storedSnapshot.AcceptedAt
+            ? timestamp
+            : storedSnapshot.AcceptedAt;
     }
 
     private static bool HasAvailableKnownData(ProviderUsageSnapshot snapshot) =>

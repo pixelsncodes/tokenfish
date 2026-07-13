@@ -69,7 +69,8 @@ internal sealed class ClaudeUsageSnapshotFactory
                 DataFreshness.Unknown),
             capturedAt,
             quotaWindows,
-            activityMetrics: []);
+            activityMetrics: [],
+            sourceObservedAt: capturedAt);
     }
 
     public static ProviderUsageSnapshot CreateUnavailable(DateTimeOffset capturedAtUtc) =>
