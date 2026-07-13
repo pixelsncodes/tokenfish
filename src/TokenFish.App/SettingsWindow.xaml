@@ -127,30 +127,31 @@
                     <StackPanel Spacing="4">
                         <TextBlock
                             FontWeight="SemiBold"
-                            Text="Claude Code settings" />
+                            Text="Claude Code on Windows" />
                         <TextBox
                             x:Name="ClaudeStatusLineSettingsTextBox"
                             AcceptsReturn="True"
                             FontFamily="Consolas"
+                            Height="116"
                             IsReadOnly="True"
-                            MaxHeight="180"
-                            MinHeight="116"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock
+                            FontWeight="SemiBold"
+                            Text="Claude Code inside WSL" />
+                        <TextBox
+                            x:Name="ClaudeWslStatusLineSettingsTextBox"
+                            AcceptsReturn="True"
+                            FontFamily="Consolas"
+                            Height="116"
+                            IsReadOnly="True"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto"
                             TextWrapping="Wrap" />
                     </StackPanel>
                     <TextBlock
                         x:Name="ClaudeSetupNextStepsTextBlock"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        TextWrapping="Wrap" />
-                    <TextBlock
-                        x:Name="ClaudeSetupFolderMoveNoteTextBlock"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        TextWrapping="Wrap" />
-                    <TextBlock
-                        x:Name="ClaudeSetupManualConfigurationNoteTextBlock"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        TextWrapping="Wrap" />
-                    <TextBlock
-                        x:Name="ClaudeSetupWaitingGuidanceTextBlock"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         TextWrapping="Wrap" />
                 </StackPanel>

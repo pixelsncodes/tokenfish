@@ -2,7 +2,7 @@ namespace TokenFish.Infrastructure;
 
 public static class SettingsWindowLayoutCalculator
 {
-    public const double WidthEffectivePixels = 520;
+    public const double WidthEffectivePixels = 680;
     public const double WorkAreaMarginEffectivePixels = 24;
     public const double HeightRoundingAllowanceEffectivePixels = 2;
 

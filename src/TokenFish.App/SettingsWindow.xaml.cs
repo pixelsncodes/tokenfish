@@ -53,7 +53,7 @@ public sealed partial class SettingsWindow : Window
     {
         var scale = SettingsWindowSizing.GetRasterizationScale(this);
         AppWindow.Resize(SettingsWindowSizing.ToPhysicalSize(
-            widthEffectivePixels: 520,
+            widthEffectivePixels: SettingsWindowLayoutCalculator.WidthEffectivePixels,
             heightEffectivePixels: 390,
             scale));
 
@@ -170,11 +170,8 @@ public sealed partial class SettingsWindow : Window
             ClaudeSetupDescriptionTextBlock.Text = state.ClaudeSetupDescription;
             ClaudeBridgeExecutablePathTextBlock.Text = state.ClaudeBridgeExecutablePath;
             ClaudeStatusLineSettingsTextBox.Text = state.ClaudeStatusLineSettingsSnippet;
+            ClaudeWslStatusLineSettingsTextBox.Text = state.ClaudeWslStatusLineSettingsSnippet;
             ClaudeSetupNextStepsTextBlock.Text = state.ClaudeSetupNextSteps;
-            ClaudeSetupFolderMoveNoteTextBlock.Text = state.ClaudeSetupFolderMoveNote;
-            ClaudeSetupManualConfigurationNoteTextBlock.Text =
-                state.ClaudeSetupManualConfigurationNote;
-            ClaudeSetupWaitingGuidanceTextBlock.Text = state.ClaudeSetupWaitingGuidance;
             SaveButton.IsEnabled = state.CanSave;
             SaveButton.Content = state.IsSaving ? "Saving..." : "Save";
             StatusTextBlock.Text = state.StatusMessage;

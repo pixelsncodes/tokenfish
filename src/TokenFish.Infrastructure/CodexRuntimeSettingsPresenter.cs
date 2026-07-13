@@ -8,15 +8,9 @@ public sealed class CodexRuntimeSettingsPresenter
     private const string ClaudeBridgeDescription =
         "Claude usage arrives through the local TokenFish Claude bridge.";
     private const string ClaudeSetupDescription =
-        "Claude usage reaches TokenFish through this local bridge. Add this statusLine object to your Claude Code user settings.";
+        "Choose the matching manual setup path for where Claude Code runs.";
     private const string ClaudeSetupNextSteps =
-        "Next steps: save Claude or Codex and Claude as the TokenFish provider selection, restart TokenFish when requested, configure Claude Code manually, trigger a normal Claude Code status-line update, then refresh TokenFish.";
-    private const string ClaudeSetupFolderMoveNote =
-        "If you move the published TokenFish folder, update Claude Code's configured command.";
-    private const string ClaudeSetupManualConfigurationNote =
-        "TokenFish does not edit Claude Code settings.";
-    private const string ClaudeSetupWaitingGuidance =
-        "If Claude remains waiting or unavailable, trigger a Claude Code status-line update and refresh TokenFish.";
+        "Use Windows when Claude Code runs natively on Windows. Use WSL when it runs inside a WSL distribution; its settings file is normally ~/.claude/settings.json. Merge only statusLine and preserve unrelated settings. TokenFish never edits Claude Code settings. If you move the published TokenFish folder, update the command. Restart TokenFish when provider-selection changes require it, then trigger a normal Claude Code status-line update and refresh TokenFish.";
     private const string CodexSettingsRetainedDescription =
         "Codex runtime settings are retained for later use.";
 
@@ -302,10 +296,8 @@ public sealed class CodexRuntimeSettingsPresenter
             ClaudeSetupDescription,
             _claudeBridgeSetup.ExecutablePath,
             _claudeBridgeSetup.SettingsSnippet,
+            _claudeBridgeSetup.WslSettingsSnippet,
             ClaudeSetupNextSteps,
-            ClaudeSetupFolderMoveNote,
-            ClaudeSetupManualConfigurationNote,
-            ClaudeSetupWaitingGuidance,
             _readinessProvider.CreateReadinessRows(
                 _runningProviderSelectionMode,
                 _runningRuntimeMode),
@@ -436,10 +428,8 @@ public sealed record CodexRuntimeSettingsViewState(
     string ClaudeSetupDescription,
     string ClaudeBridgeExecutablePath,
     string ClaudeStatusLineSettingsSnippet,
+    string ClaudeWslStatusLineSettingsSnippet,
     string ClaudeSetupNextSteps,
-    string ClaudeSetupFolderMoveNote,
-    string ClaudeSetupManualConfigurationNote,
-    string ClaudeSetupWaitingGuidance,
     IReadOnlyList<ProviderReadinessDisplayState> ReadinessRows,
     bool CanSave,
     bool IsSaving,

@@ -5,10 +5,10 @@ namespace TokenFish.Infrastructure.Tests;
 public sealed class SettingsWindowLayoutCalculatorTests
 {
     [Theory]
-    [InlineData(1.0, 520)]
-    [InlineData(1.25, 650)]
-    [InlineData(1.5, 780)]
-    [InlineData(2.0, 1040)]
+    [InlineData(1.0, 680)]
+    [InlineData(1.25, 850)]
+    [InlineData(1.5, 1020)]
+    [InlineData(2.0, 1360)]
     public void EffectiveWidthConvertsToPhysicalPixels(double scale, int expected)
     {
         var physical = SettingsWindowLayoutCalculator.EffectiveToPhysicalPixels(
@@ -19,10 +19,10 @@ public sealed class SettingsWindowLayoutCalculatorTests
     }
 
     [Theory]
-    [InlineData(1.0, 390, 8, 40, 528, 432)]
-    [InlineData(1.25, 390, 10, 50, 660, 540)]
-    [InlineData(1.5, 390, 12, 60, 792, 648)]
-    [InlineData(2.0, 390, 16, 80, 1056, 864)]
+    [InlineData(1.0, 390, 8, 40, 688, 432)]
+    [InlineData(1.25, 390, 10, 50, 860, 540)]
+    [InlineData(1.5, 390, 12, 60, 1032, 648)]
+    [InlineData(2.0, 390, 16, 80, 1376, 864)]
     public void OuterSizeAddsNonClientFrameToMeasuredClientArea(
         double scale,
         double measuredClientHeight,
@@ -121,10 +121,10 @@ public sealed class SettingsWindowLayoutCalculatorTests
     }
 
     [Theory]
-    [InlineData(1.0, 528, 692)]
-    [InlineData(1.25, 660, 865)]
-    [InlineData(1.5, 792, 1038)]
-    [InlineData(2.0, 1056, 1384)]
+    [InlineData(1.0, 688, 692)]
+    [InlineData(1.25, 860, 865)]
+    [InlineData(1.5, 1032, 1038)]
+    [InlineData(2.0, 1376, 1384)]
     public void DesiredHeightScalesFromEffectivePixels(
         double scale,
         int expectedWidth,
@@ -293,9 +293,9 @@ public sealed class SettingsWindowLayoutCalculatorTests
     }
 
     [Theory]
-    [InlineData(1.25, 650, 538, 875, 381)]
-    [InlineData(1.5, 780, 645, 1050, 457)]
-    [InlineData(2.0, 1040, 860, 1400, 610)]
+    [InlineData(1.25, 850, 538, 775, 381)]
+    [InlineData(1.5, 1020, 645, 930, 457)]
+    [InlineData(2.0, 1360, 860, 1240, 610)]
     public void SettingsWindowCentersUsingPhysicalPixelsAtEffectiveScaling(
         double scale,
         int expectedWidth,

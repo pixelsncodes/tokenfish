@@ -130,6 +130,14 @@ public sealed class CodexRuntimeSettingsPresenterTests
         Assert.Contains("C:/Synthetic Apps", state.ClaudeStatusLineSettingsSnippet, StringComparison.Ordinal);
         Assert.DoesNotContain(@"C:\Users\pixel", state.ClaudeStatusLineSettingsSnippet, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("/mnt/c/Users/pixel", state.ClaudeStatusLineSettingsSnippet, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"statusLine\"", state.ClaudeWslStatusLineSettingsSnippet, StringComparison.Ordinal);
+        Assert.Contains("/mnt/c/Synthetic Apps", state.ClaudeWslStatusLineSettingsSnippet, StringComparison.Ordinal);
+        Assert.DoesNotContain("powershell", state.ClaudeWslStatusLineSettingsSnippet, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(@"C:\Users\pixel", state.ClaudeWslStatusLineSettingsSnippet, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/mnt/c/Users/pixel", state.ClaudeWslStatusLineSettingsSnippet, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("~/.claude/settings.json", state.ClaudeSetupNextSteps, StringComparison.Ordinal);
+        Assert.Contains("TokenFish never edits Claude Code settings", state.ClaudeSetupNextSteps, StringComparison.Ordinal);
+        Assert.Contains("move the published TokenFish folder", state.ClaudeSetupNextSteps, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -142,6 +150,7 @@ public sealed class CodexRuntimeSettingsPresenterTests
 
         Assert.False(state.IsClaudeSetupVisible);
         Assert.NotEmpty(state.ClaudeStatusLineSettingsSnippet);
+        Assert.NotEmpty(state.ClaudeWslStatusLineSettingsSnippet);
     }
 
     [Fact]

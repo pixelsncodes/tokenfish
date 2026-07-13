@@ -19,7 +19,20 @@ Claude Code's documented status-line contract uses a `statusLine` settings objec
 }
 ```
 
-Users add or merge that object into their Claude Code user settings manually. TokenFish does not inspect Claude credentials, prompts, responses, workspaces, source code, or browser data to generate the command.
+Use that Windows snippet only when Claude Code runs natively on Windows. Users add or merge the `statusLine` object into their Claude Code user settings manually, preserving unrelated settings.
+
+When Claude Code runs inside WSL, its settings file is normally `~/.claude/settings.json`. The bridge remains a Windows executable, so Settings converts an absolute drive path by lowercasing the drive letter and replacing backslashes with forward slashes. For example, `C:\Users\Name\TokenFish\tools\claude\TokenFish.ClaudeBridge.exe` becomes `/mnt/c/Users/Name/TokenFish/tools/claude/TokenFish.ClaudeBridge.exe`. A WSL UNC path is distribution-local instead: `\\wsl.localhost\Ubuntu\tmp\TokenFish\tools\claude\TokenFish.ClaudeBridge.exe` becomes `/tmp/TokenFish/tools/claude/TokenFish.ClaudeBridge.exe`. The WSL command directly invokes that quoted path and does not use PowerShell:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "\"/mnt/c/Users/Name/TokenFish/tools/claude/TokenFish.ClaudeBridge.exe\""
+  }
+}
+```
+
+TokenFish never edits, merges, backs up, or inspects Claude Code settings. Users configure either snippet manually, and moving the published TokenFish folder requires updating the configured command. TokenFish does not inspect Claude credentials, prompts, responses, workspaces, source code, or browser data to generate either command.
 
 Claude Code sends one JSON payload to the bridge on standard input. The bridge allowlist is limited to:
 
