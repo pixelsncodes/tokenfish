@@ -100,7 +100,8 @@ public sealed class InMemoryProviderRuntimeSnapshotStore : IProviderRuntimeSnaps
             return DataFreshness.Stale;
         }
 
-        var age = _timeProvider.GetUtcNow().ToUniversalTime() - storedSnapshot.AcceptedAt;
+        var age = _timeProvider.GetUtcNow().ToUniversalTime() -
+            storedSnapshot.Snapshot.CapturedAt;
 
         return age <= _freshnessThreshold
             ? DataFreshness.Live
