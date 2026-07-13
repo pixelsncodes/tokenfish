@@ -3,8 +3,8 @@ namespace TokenFish.Infrastructure;
 public static class SettingsWindowLayoutCalculator
 {
     public const double WidthEffectivePixels = 520;
-    public const double MaximumClientHeightEffectivePixels = 720;
     public const double WorkAreaMarginEffectivePixels = 24;
+    public const double HeightRoundingAllowanceEffectivePixels = 2;
 
     public static int EffectiveToPhysicalPixels(double effectivePixels, double rasterizationScale)
     {
@@ -48,7 +48,12 @@ public static class SettingsWindowLayoutCalculator
         }
 
         var measuredHeight = Math.Ceiling(measuredClientHeightEffectivePixels);
-        var maximumClientHeightEffectivePixels = MaximumClientHeightEffectivePixels;
+        // WinUI can report fractional desired sizes while the final AppWindow size is integral
+        // physical pixels. A fixed 2-DIP allowance prevents a 1px rounding mismatch from
+        // lighting up the ScrollViewer without accumulating across repeated activations.
+        var desiredClientHeightEffectivePixels = Math.Ceiling(
+            measuredClientHeightEffectivePixels + HeightRoundingAllowanceEffectivePixels);
+        var maximumClientHeightEffectivePixels = desiredClientHeightEffectivePixels;
         if (maximumWindowHeightPhysicalPixels is { } maximumWindowHeight)
         {
             var maximumClientHeightPhysicalPixels = Math.Max(
@@ -60,7 +65,7 @@ public static class SettingsWindowLayoutCalculator
         }
 
         var clientHeightEffectivePixels = Math.Min(
-            measuredHeight,
+            desiredClientHeightEffectivePixels,
             Math.Max(1, maximumClientHeightEffectivePixels));
         var clientWidthPhysicalPixels = EffectiveToPhysicalPixels(
             WidthEffectivePixels,

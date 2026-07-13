@@ -19,10 +19,10 @@ public sealed class SettingsWindowLayoutCalculatorTests
     }
 
     [Theory]
-    [InlineData(1.0, 390, 8, 40, 528, 430)]
-    [InlineData(1.25, 390, 10, 50, 660, 538)]
-    [InlineData(1.5, 390, 12, 60, 792, 645)]
-    [InlineData(2.0, 390, 16, 80, 1056, 860)]
+    [InlineData(1.0, 390, 8, 40, 528, 432)]
+    [InlineData(1.25, 390, 10, 50, 660, 540)]
+    [InlineData(1.5, 390, 12, 60, 792, 648)]
+    [InlineData(2.0, 390, 16, 80, 1056, 864)]
     public void OuterSizeAddsNonClientFrameToMeasuredClientArea(
         double scale,
         double measuredClientHeight,
@@ -39,7 +39,7 @@ public sealed class SettingsWindowLayoutCalculatorTests
 
         Assert.Equal(expectedWidth, layout.Size.Width);
         Assert.Equal(expectedHeight, layout.Size.Height);
-        Assert.Equal(390, layout.ClientHeightEffectivePixels);
+        Assert.Equal(392, layout.ClientHeightEffectivePixels);
     }
 
     [Fact]
@@ -51,12 +51,12 @@ public sealed class SettingsWindowLayoutCalculatorTests
             nonClientWidthPhysicalPixels: 0,
             nonClientHeightPhysicalPixels: 0);
 
-        Assert.Equal(489, layout.Size.Height);
-        Assert.Equal(391, layout.ClientHeightEffectivePixels);
+        Assert.Equal(492, layout.Size.Height);
+        Assert.Equal(393, layout.ClientHeightEffectivePixels);
     }
 
     [Fact]
-    public void VeryTallAccessibilityContentIsBoundedByMaximumClientHeight()
+    public void TallContentFitsWhenWorkAreaCanContainIt()
     {
         var layout = SettingsWindowLayoutCalculator.Calculate(
             measuredClientHeightEffectivePixels: 800,
@@ -64,17 +64,21 @@ public sealed class SettingsWindowLayoutCalculatorTests
             nonClientWidthPhysicalPixels: 10,
             nonClientHeightPhysicalPixels: 50);
 
-        Assert.Equal(950, layout.Size.Height);
-        Assert.Equal(SettingsWindowLayoutCalculator.MaximumClientHeightEffectivePixels, layout.ClientHeightEffectivePixels);
-        Assert.True(layout.RequiresVerticalScroll);
+        Assert.Equal(1053, layout.Size.Height);
+        Assert.Equal(802, layout.ClientHeightEffectivePixels);
+        Assert.False(layout.RequiresVerticalScroll);
     }
 
     [Theory]
-    [InlineData(650)]
-    [InlineData(610)]
-    [InlineData(700)]
-    public void NormalProviderModeContentFitsWithoutScrolling(double measuredClientHeight)
+    [InlineData(650, "Codex")]
+    [InlineData(610, "Claude")]
+    [InlineData(700, "Codex and Claude")]
+    public void ProviderModeRequiredHeightFitsWithoutScrolling(
+        double measuredClientHeight,
+        string providerMode)
     {
+        _ = providerMode;
+
         var layout = SettingsWindowLayoutCalculator.Calculate(
             measuredClientHeight,
             rasterizationScale: 1.25,
@@ -82,12 +86,12 @@ public sealed class SettingsWindowLayoutCalculatorTests
             nonClientHeightPhysicalPixels: 50,
             maximumWindowHeightPhysicalPixels: 1200);
 
-        Assert.Equal(measuredClientHeight, layout.ClientHeightEffectivePixels);
+        Assert.Equal(measuredClientHeight + 2, layout.ClientHeightEffectivePixels);
         Assert.False(layout.RequiresVerticalScroll);
     }
 
     [Fact]
-    public void FooterHeightIncludedInMeasuredContentHeight()
+    public void FooterAndRootPaddingAreIncludedInMeasuredContentHeight()
     {
         var layout = SettingsWindowLayoutCalculator.Calculate(
             measuredClientHeightEffectivePixels: 705,
@@ -96,16 +100,31 @@ public sealed class SettingsWindowLayoutCalculatorTests
             nonClientHeightPhysicalPixels: 40,
             maximumWindowHeightPhysicalPixels: 900);
 
-        Assert.Equal(705, layout.ClientHeightEffectivePixels);
-        Assert.Equal(745, layout.Size.Height);
+        Assert.Equal(707, layout.ClientHeightEffectivePixels);
+        Assert.Equal(747, layout.Size.Height);
+        Assert.False(layout.RequiresVerticalScroll);
+    }
+
+    [Fact]
+    public void PendingRestartPanelIsIncludedInRequiredHeight()
+    {
+        var layout = SettingsWindowLayoutCalculator.Calculate(
+            measuredClientHeightEffectivePixels: 780,
+            rasterizationScale: 1.25,
+            nonClientWidthPhysicalPixels: 10,
+            nonClientHeightPhysicalPixels: 50,
+            maximumWindowHeightPhysicalPixels: 1300);
+
+        Assert.Equal(782, layout.ClientHeightEffectivePixels);
+        Assert.Equal(1028, layout.Size.Height);
         Assert.False(layout.RequiresVerticalScroll);
     }
 
     [Theory]
-    [InlineData(1.0, 528, 690)]
-    [InlineData(1.25, 660, 863)]
-    [InlineData(1.5, 792, 1035)]
-    [InlineData(2.0, 1056, 1380)]
+    [InlineData(1.0, 528, 692)]
+    [InlineData(1.25, 660, 865)]
+    [InlineData(1.5, 792, 1038)]
+    [InlineData(2.0, 1056, 1384)]
     public void DesiredHeightScalesFromEffectivePixels(
         double scale,
         int expectedWidth,
@@ -139,6 +158,21 @@ public sealed class SettingsWindowLayoutCalculatorTests
     }
 
     [Fact]
+    public void FractionalDipOverflowGetsBoundedRoundingAllowance()
+    {
+        var layout = SettingsWindowLayoutCalculator.Calculate(
+            measuredClientHeightEffectivePixels: 720.8,
+            rasterizationScale: 1.25,
+            nonClientWidthPhysicalPixels: 10,
+            nonClientHeightPhysicalPixels: 50,
+            maximumWindowHeightPhysicalPixels: 960);
+
+        Assert.Equal(723, layout.ClientHeightEffectivePixels);
+        Assert.Equal(954, layout.Size.Height);
+        Assert.False(layout.RequiresVerticalScroll);
+    }
+
+    [Fact]
     public void MaximumHeightRespectsMonitorWorkArea()
     {
         var layout = SettingsWindowLayoutCalculator.Calculate(
@@ -169,8 +203,8 @@ public sealed class SettingsWindowLayoutCalculatorTests
             nonClientHeightPhysicalPixels: 50,
             maximumWindowHeightPhysicalPixels: 1200);
 
-        Assert.Equal(610, claudeOnly.ClientHeightEffectivePixels);
-        Assert.Equal(700, combined.ClientHeightEffectivePixels);
+        Assert.Equal(612, claudeOnly.ClientHeightEffectivePixels);
+        Assert.Equal(702, combined.ClientHeightEffectivePixels);
         Assert.False(claudeOnly.RequiresVerticalScroll);
         Assert.False(combined.RequiresVerticalScroll);
     }
@@ -185,7 +219,7 @@ public sealed class SettingsWindowLayoutCalculatorTests
             nonClientHeightPhysicalPixels: 50,
             maximumWindowHeightPhysicalPixels: 1200);
         var second = SettingsWindowLayoutCalculator.Calculate(
-            measuredClientHeightEffectivePixels: first.ClientHeightEffectivePixels,
+            measuredClientHeightEffectivePixels: 650,
             rasterizationScale: 1.25,
             nonClientWidthPhysicalPixels: 10,
             nonClientHeightPhysicalPixels: 50,
