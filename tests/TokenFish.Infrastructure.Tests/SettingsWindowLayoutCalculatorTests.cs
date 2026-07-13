@@ -67,4 +67,187 @@ public sealed class SettingsWindowLayoutCalculatorTests
         Assert.Equal(750, layout.Size.Height);
         Assert.Equal(SettingsWindowLayoutCalculator.MaximumClientHeightEffectivePixels, layout.ClientHeightEffectivePixels);
     }
+
+    [Fact]
+    public void SettingsWindowCentersOnPrimaryMonitorAtOrigin()
+    {
+        var placement = SettingsWindowPositionCalculator.Calculate(
+            [new SettingsMonitorWorkArea(0, 0, 1920, 1040, IsPrimary: true)],
+            new SettingsWindowPhysicalSize(520, 430),
+            new SettingsPhysicalPoint(200, 200),
+            lastWindowRectangle: null);
+
+        Assert.Equal(new SettingsWindowPhysicalRect(700, 305, 520, 430), placement.Rectangle);
+        Assert.False(placement.ReusedLastPosition);
+    }
+
+    [Fact]
+    public void SettingsWindowCentersOnSecondaryMonitorToRight()
+    {
+        var placement = SettingsWindowPositionCalculator.Calculate(
+            [
+                new SettingsMonitorWorkArea(0, 0, 1920, 1040, IsPrimary: true),
+                new SettingsMonitorWorkArea(1920, 0, 1920, 1040)
+            ],
+            new SettingsWindowPhysicalSize(520, 430),
+            new SettingsPhysicalPoint(2500, 300),
+            lastWindowRectangle: null);
+
+        Assert.Equal(new SettingsWindowPhysicalRect(2620, 305, 520, 430), placement.Rectangle);
+    }
+
+    [Fact]
+    public void SettingsWindowCentersOnSecondaryMonitorToLeftWithNegativeCoordinates()
+    {
+        var placement = SettingsWindowPositionCalculator.Calculate(
+            [
+                new SettingsMonitorWorkArea(-1920, 0, 1920, 1040),
+                new SettingsMonitorWorkArea(0, 0, 1920, 1040, IsPrimary: true)
+            ],
+            new SettingsWindowPhysicalSize(520, 430),
+            new SettingsPhysicalPoint(-800, 300),
+            lastWindowRectangle: null);
+
+        Assert.Equal(new SettingsWindowPhysicalRect(-1220, 305, 520, 430), placement.Rectangle);
+    }
+
+    [Theory]
+    [InlineData(0, -1080, 700, -775)]
+    [InlineData(0, 1080, 700, 1385)]
+    public void SettingsWindowCentersOnMonitorAboveOrBelowPrimary(
+        int monitorX,
+        int monitorY,
+        int expectedX,
+        int expectedY)
+    {
+        var placement = SettingsWindowPositionCalculator.Calculate(
+            [
+                new SettingsMonitorWorkArea(0, 0, 1920, 1040, IsPrimary: true),
+                new SettingsMonitorWorkArea(monitorX, monitorY, 1920, 1040)
+            ],
+            new SettingsWindowPhysicalSize(520, 430),
+            new SettingsPhysicalPoint(monitorX + 100, monitorY + 100),
+            lastWindowRectangle: null);
+
+        Assert.Equal(new SettingsWindowPhysicalRect(expectedX, expectedY, 520, 430), placement.Rectangle);
+    }
+
+    [Theory]
+    [InlineData(1.25, 650, 538, 875, 381)]
+    [InlineData(1.5, 780, 645, 1050, 457)]
+    [InlineData(2.0, 1040, 860, 1400, 610)]
+    public void SettingsWindowCentersUsingPhysicalPixelsAtEffectiveScaling(
+        double scale,
+        int expectedWidth,
+        int expectedHeight,
+        int expectedX,
+        int expectedY)
+    {
+        var width = SettingsWindowLayoutCalculator.EffectiveToPhysicalPixels(
+            SettingsWindowLayoutCalculator.WidthEffectivePixels,
+            scale);
+        var height = SettingsWindowLayoutCalculator.EffectiveToPhysicalPixels(430, scale);
+        var placement = SettingsWindowPositionCalculator.Calculate(
+            [
+                new SettingsMonitorWorkArea(
+                    0,
+                    0,
+                    (int)(1920 * scale),
+                    (int)(1040 * scale),
+                    IsPrimary: true)
+            ],
+            new SettingsWindowPhysicalSize(width, height),
+            new SettingsPhysicalPoint(20, 20),
+            lastWindowRectangle: null);
+
+        Assert.Equal(new SettingsWindowPhysicalRect(expectedX, expectedY, expectedWidth, expectedHeight), placement.Rectangle);
+    }
+
+    [Fact]
+    public void SettingsWindowCentersWithinWorkAreaReducedByTaskbar()
+    {
+        var placement = SettingsWindowPositionCalculator.Calculate(
+            [new SettingsMonitorWorkArea(0, 0, 1920, 1000, IsPrimary: true)],
+            new SettingsWindowPhysicalSize(520, 430),
+            new SettingsPhysicalPoint(100, 100),
+            lastWindowRectangle: null);
+
+        Assert.Equal(new SettingsWindowPhysicalRect(700, 285, 520, 430), placement.Rectangle);
+    }
+
+    [Fact]
+    public void SettingsWindowLargerThanWorkAreaStartsAtWorkAreaOrigin()
+    {
+        var placement = SettingsWindowPositionCalculator.Calculate(
+            [new SettingsMonitorWorkArea(100, 50, 800, 500, IsPrimary: true)],
+            new SettingsWindowPhysicalSize(900, 600),
+            new SettingsPhysicalPoint(200, 100),
+            lastWindowRectangle: null);
+
+        Assert.Equal(new SettingsWindowPhysicalRect(100, 50, 900, 600), placement.Rectangle);
+    }
+
+    [Theory]
+    [InlineData(50, 100, 100, 100)]
+    [InlineData(900, 100, 580, 100)]
+    [InlineData(100, 20, 100, 50)]
+    [InlineData(100, 650, 100, 470)]
+    public void SettingsWindowClampKeepsCompleteRectangleInWorkAreaWhenItFits(
+        int requestedX,
+        int requestedY,
+        int expectedX,
+        int expectedY)
+    {
+        var clamped = SettingsWindowPositionCalculator.ClampToWorkArea(
+            new SettingsWindowPhysicalRect(requestedX, requestedY, 320, 180),
+            new SettingsMonitorWorkArea(100, 50, 800, 600, IsPrimary: true));
+
+        Assert.Equal(new SettingsWindowPhysicalRect(expectedX, expectedY, 320, 180), clamped);
+    }
+
+    [Fact]
+    public void SettingsWindowReusesLastValidPosition()
+    {
+        var lastRectangle = new SettingsWindowPhysicalRect(2100, 140, 520, 430);
+        var placement = SettingsWindowPositionCalculator.Calculate(
+            [
+                new SettingsMonitorWorkArea(0, 0, 1920, 1040, IsPrimary: true),
+                new SettingsMonitorWorkArea(1920, 0, 1920, 1040)
+            ],
+            new SettingsWindowPhysicalSize(520, 430),
+            new SettingsPhysicalPoint(200, 200),
+            lastRectangle);
+
+        Assert.Equal(lastRectangle, placement.Rectangle);
+        Assert.True(placement.ReusedLastPosition);
+    }
+
+    [Fact]
+    public void SettingsWindowIgnoresInvalidOffscreenReusedPosition()
+    {
+        var placement = SettingsWindowPositionCalculator.Calculate(
+            [new SettingsMonitorWorkArea(0, 0, 1920, 1040, IsPrimary: true)],
+            new SettingsWindowPhysicalSize(520, 430),
+            new SettingsPhysicalPoint(200, 200),
+            new SettingsWindowPhysicalRect(-2000, 100, 520, 430));
+
+        Assert.Equal(new SettingsWindowPhysicalRect(700, 305, 520, 430), placement.Rectangle);
+        Assert.False(placement.ReusedLastPosition);
+    }
+
+    [Fact]
+    public void SettingsWindowCenteringUsesSelectedMonitorNotVirtualDesktopBounds()
+    {
+        var placement = SettingsWindowPositionCalculator.Calculate(
+            [
+                new SettingsMonitorWorkArea(-1920, 0, 1920, 1040),
+                new SettingsMonitorWorkArea(0, 0, 1920, 1040, IsPrimary: true)
+            ],
+            new SettingsWindowPhysicalSize(520, 430),
+            new SettingsPhysicalPoint(-1000, 300),
+            lastWindowRectangle: null);
+
+        Assert.Equal(new SettingsWindowPhysicalRect(-1220, 305, 520, 430), placement.Rectangle);
+        Assert.NotEqual(new SettingsWindowPhysicalRect(-260, 305, 520, 430), placement.Rectangle);
+    }
 }

@@ -6,20 +6,26 @@ using Microsoft.UI.Xaml.Media;
 using TokenFish.Core.Models;
 using TokenFish.App.Platform;
 using TokenFish.Infrastructure;
+using Windows.Graphics;
 
 namespace TokenFish.App;
 
 public sealed partial class SettingsWindow : Window
 {
     private readonly CodexRuntimeSettingsPresenter _presenter;
+    private readonly Func<RectInt32?> _getPreferredPlacementAnchor;
     private bool _isLoaded;
+    private bool _isPositioned;
     private bool _updatingControls;
 
-    public SettingsWindow(CodexRuntimeSettingsPresenter presenter)
+    public SettingsWindow(
+        CodexRuntimeSettingsPresenter presenter,
+        Func<RectInt32?>? getPreferredPlacementAnchor = null)
     {
         ArgumentNullException.ThrowIfNull(presenter);
 
         _presenter = presenter;
+        _getPreferredPlacementAnchor = getPreferredPlacementAnchor ?? (() => null);
         InitializeComponent();
         Title = "TokenFish Settings";
         InitializeWindowSize();
@@ -31,8 +37,10 @@ public sealed partial class SettingsWindow : Window
     {
         RootGrid.Loaded -= OnRootGridLoaded;
         _isLoaded = true;
-        ApplyState(_presenter.State);
-        ApplyState(await _presenter.LoadAsync(CancellationToken.None));
+        ApplyState(_presenter.State, ensurePositioned: false);
+        ApplyState(
+            await _presenter.LoadAsync(CancellationToken.None),
+            ensurePositioned: true);
     }
 
     private void InitializeRuntimeModes()
@@ -118,7 +126,12 @@ public sealed partial class SettingsWindow : Window
         Close();
     }
 
-    private void ApplyState(CodexRuntimeSettingsViewState state)
+    public void CaptureCurrentPlacement() =>
+        SettingsWindowPlacementService.CaptureCurrentPosition(this);
+
+    private void ApplyState(
+        CodexRuntimeSettingsViewState state,
+        bool ensurePositioned = true)
     {
         _updatingControls = true;
         try
@@ -164,7 +177,7 @@ public sealed partial class SettingsWindow : Window
             _updatingControls = false;
         }
 
-        ResizeToContent();
+        ResizeToContent(ensurePositioned);
     }
 
     private void RenderReadinessRows(
@@ -197,7 +210,7 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
-    private void ResizeToContent()
+    private void ResizeToContent(bool ensurePositioned)
     {
         if (!_isLoaded || RootGrid.XamlRoot is null)
         {
@@ -211,6 +224,19 @@ public sealed partial class SettingsWindow : Window
 
         var measuredHeight = Math.Ceiling(RootGrid.DesiredSize.Height);
         AppWindow.Resize(SettingsWindowSizing.ToOuterPhysicalSize(this, measuredHeight));
+
+        if (!ensurePositioned)
+        {
+            return;
+        }
+
+        if (!_isPositioned || !SettingsWindowPlacementService.IsCurrentPositionVisible(this))
+        {
+            SettingsWindowPlacementService.EnsureVisibleOnMonitor(
+                this,
+                _getPreferredPlacementAnchor());
+            _isPositioned = true;
+        }
     }
 
     private Brush GetStatusBorderBrush(CodexRuntimeSettingsStatusKind statusKind)

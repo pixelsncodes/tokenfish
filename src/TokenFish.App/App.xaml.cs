@@ -52,7 +52,8 @@ public partial class App : Application
         var popupShell = new MainWindowPopupShell(_popupWindow, icon);
         var popupTimer = new DispatcherPopupUpdateTimer(_window.DispatcherQueue);
         var popupActionQueue = new DispatcherPopupActionQueue(_window.DispatcherQueue);
-        _settingsWindowCoordinator = new SettingsWindowCoordinator(CreateSettingsWindowShell);
+        _settingsWindowCoordinator = new SettingsWindowCoordinator(
+            () => CreateSettingsWindowShell(icon));
         _popupController = new TrayPopupController(
             popupShell,
             popupTimer,
@@ -126,13 +127,15 @@ public partial class App : Application
         return Task.CompletedTask;
     }
 
-    private ISettingsWindowShell CreateSettingsWindowShell()
+    private ISettingsWindowShell CreateSettingsWindowShell(NativeNotificationAreaIcon icon)
     {
         var editor = new CodexRuntimeSettingsEditor(_settingsStore);
         var readinessProvider = new ProviderReadinessProvider(
             _runtimeHost.Services?.ProviderRuntimeSnapshotStore);
         var presenter = new CodexRuntimeSettingsPresenter(editor, readinessProvider);
-        return new SettingsWindowShell(new SettingsWindow(presenter));
+        return new SettingsWindowShell(new SettingsWindow(
+            presenter,
+            () => icon.TryGetIconRectangle(out var rectangle) ? rectangle : null));
     }
 
     private void OnRuntimeStatusChanged(ApplicationRuntimeStatus status)

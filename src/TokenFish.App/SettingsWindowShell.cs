@@ -25,6 +25,7 @@ internal sealed class SettingsWindowShell : ISettingsWindowShell
     public void Close()
     {
         _window.Closed -= OnClosed;
+        _window.CaptureCurrentPlacement();
         _window.Close();
     }
 
@@ -33,6 +34,7 @@ internal sealed class SettingsWindowShell : ISettingsWindowShell
         _ = sender;
         _ = args;
         _window.Closed -= OnClosed;
+        _window.CaptureCurrentPlacement();
         Closed?.Invoke(this);
     }
 }
