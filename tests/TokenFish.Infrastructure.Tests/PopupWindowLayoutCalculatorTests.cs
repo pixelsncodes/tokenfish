@@ -43,15 +43,15 @@ public sealed class PopupWindowLayoutCalculatorTests
     }
 
     [Theory]
-    [InlineData(1.0, 180)]
-    [InlineData(1.25, 225)]
-    [InlineData(1.5, 270)]
-    public void ShortWaitingStateUsesMinimumHeight(double scale, int expectedPhysicalHeight)
+    [InlineData(1.0, 120)]
+    [InlineData(1.25, 150)]
+    [InlineData(1.5, 180)]
+    public void ShortWaitingStateUsesMeasuredHeight(double scale, int expectedPhysicalHeight)
     {
         var layout = Calculate(measuredContentHeightEffectivePixels: 120, scale);
 
         Assert.Equal(expectedPhysicalHeight, layout.Size.Height);
-        Assert.Equal(PopupWindowLayoutCalculator.MinimumHeightEffectivePixels, layout.HeightEffectivePixels);
+        Assert.Equal(120, layout.HeightEffectivePixels);
     }
 
     [Fact]
@@ -69,16 +69,20 @@ public sealed class PopupWindowLayoutCalculatorTests
         var withActivity = Calculate(measuredContentHeightEffectivePixels: 330, scale: 1.0);
 
         Assert.True(withActivity.Size.Height > withoutActivity.Size.Height);
-        Assert.True(withActivity.HeightEffectivePixels < PopupWindowLayoutCalculator.MaximumHeightEffectivePixels);
+        Assert.Equal(330, withActivity.HeightEffectivePixels);
     }
 
     [Fact]
-    public void MultipleQuotaWindowsRemainBoundedByMaximumHeight()
+    public void ContentFitsWhenTheWorkAreaCanContainIt()
     {
-        var layout = Calculate(measuredContentHeightEffectivePixels: 900, scale: 1.0);
+        var layout = PopupWindowLayoutCalculator.Calculate(
+            new PopupPhysicalRect(900, 700, 24, 24),
+            new PopupPhysicalRect(0, 0, 1200, 1000),
+            rasterizationScale: 1.0,
+            measuredContentHeightEffectivePixels: 900);
 
-        Assert.Equal(640, layout.Size.Height);
-        Assert.Equal(PopupWindowLayoutCalculator.MaximumHeightEffectivePixels, layout.HeightEffectivePixels);
+        Assert.Equal(900, layout.Size.Height);
+        Assert.Equal(900, layout.HeightEffectivePixels);
     }
 
     [Fact]
@@ -92,6 +96,64 @@ public sealed class PopupWindowLayoutCalculatorTests
 
         Assert.Equal(404, layout.Size.Height);
         Assert.Equal(404, layout.HeightEffectivePixels);
+    }
+
+    [Theory]
+    [InlineData(1.0, 360, 24, 384)]
+    [InlineData(1.25, 360, 30, 480)]
+    public void NonClientChromeIsIncludedExactlyOnce(
+        double scale,
+        double clientHeight,
+        int nonClientHeight,
+        int expectedOuterHeight)
+    {
+        var layout = PopupWindowLayoutCalculator.Calculate(
+            new PopupPhysicalRect(900, 700, 24, 24),
+            new PopupPhysicalRect(0, 0, 1200, 1000),
+            scale,
+            clientHeight,
+            nonClientHeight);
+
+        Assert.Equal(expectedOuterHeight, layout.Size.Height);
+        Assert.Equal(clientHeight, layout.HeightEffectivePixels);
+    }
+
+    [Fact]
+    public void FooterHeightIsIncludedExactlyOnceInTheMeasuredClientHeight()
+    {
+        const double providerContentHeight = 420;
+        const double footerHeight = 48;
+
+        var layout = Calculate(
+            measuredContentHeightEffectivePixels: providerContentHeight + footerHeight,
+            scale: 1.25);
+
+        Assert.Equal(585, layout.Size.Height);
+        Assert.Equal(providerContentHeight + footerHeight, layout.HeightEffectivePixels);
+    }
+
+    [Fact]
+    public void RecalculationUsesCurrentContentHeight()
+    {
+        var expanded = Calculate(measuredContentHeightEffectivePixels: 560, scale: 1.25);
+        var compact = Calculate(measuredContentHeightEffectivePixels: 320, scale: 1.25);
+
+        Assert.Equal(700, expanded.Size.Height);
+        Assert.Equal(400, compact.Size.Height);
+    }
+
+    [Fact]
+    public void ConstrainedWorkAreaKeepsClientHeightPositive()
+    {
+        var layout = PopupWindowLayoutCalculator.Calculate(
+            new PopupPhysicalRect(900, 700, 24, 24),
+            new PopupPhysicalRect(0, 0, 1200, 20),
+            1.25,
+            900,
+            nonClientHeightPhysicalPixels: 12);
+
+        Assert.True(layout.Size.Height > 0);
+        Assert.True(layout.HeightEffectivePixels > 0);
     }
 
     [Fact]

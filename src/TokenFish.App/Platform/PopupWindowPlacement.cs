@@ -43,11 +43,13 @@ internal static class PopupWindowPlacement
             new PointInt32(anchor.X, anchor.Y),
             DisplayAreaFallback.Nearest);
         var workArea = displayArea.WorkArea;
+        var nonClientHeight = GetNonClientHeight(handle);
         var layout = PopupWindowLayoutCalculator.Calculate(
             new PopupPhysicalRect(anchor.X, anchor.Y, anchor.Width, anchor.Height),
             new PopupPhysicalRect(workArea.X, workArea.Y, workArea.Width, workArea.Height),
             rasterizationScale,
-            measuredContentHeightEffectivePixels);
+            measuredContentHeightEffectivePixels,
+            nonClientHeight);
 
         window.AppWindow.Resize(new SizeInt32(layout.Size.Width, layout.Size.Height));
         window.AppWindow.Move(new PointInt32(layout.Position.X, layout.Position.Y));
@@ -72,6 +74,18 @@ internal static class PopupWindowPlacement
             24);
     }
 
+    private static int GetNonClientHeight(nint handle)
+    {
+        if (handle == 0 ||
+            !NativeMethods.GetWindowRect(handle, out var windowRect) ||
+            !NativeMethods.GetClientRect(handle, out var clientRect))
+        {
+            return 0;
+        }
+
+        return Math.Max(0, windowRect.Height - clientRect.Height);
+    }
+
     private static class NativeMethods
     {
         public const int GwlExStyle = -20;
@@ -93,5 +107,24 @@ internal static class PopupWindowPlacement
 
         [DllImport("user32.dll")]
         public static extern uint GetDpiForWindow(nint hWnd);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetWindowRect(nint hWnd, out NativeRect rect);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetClientRect(nint hWnd, out NativeRect rect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct NativeRect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+
+            public readonly int Height => Bottom - Top;
+        }
     }
 }

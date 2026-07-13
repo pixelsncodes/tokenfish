@@ -3,8 +3,6 @@ namespace TokenFish.Infrastructure;
 public static class PopupWindowLayoutCalculator
 {
     public const double WidthEffectivePixels = 380;
-    public const double MinimumHeightEffectivePixels = 180;
-    public const double MaximumHeightEffectivePixels = 640;
     public const int WorkAreaMarginPhysicalPixels = 8;
 
     public static int EffectiveToPhysicalPixels(double effectivePixels, double rasterizationScale)
@@ -25,7 +23,8 @@ public static class PopupWindowLayoutCalculator
         PopupPhysicalRect anchor,
         PopupPhysicalRect workArea,
         double rasterizationScale,
-        double measuredContentHeightEffectivePixels)
+        double measuredContentHeightEffectivePixels,
+        int nonClientHeightPhysicalPixels = 0)
     {
         ValidateScale(rasterizationScale);
 
@@ -33,22 +32,29 @@ public static class PopupWindowLayoutCalculator
         {
             throw new ArgumentOutOfRangeException(
                 nameof(measuredContentHeightEffectivePixels),
-                "Measured content height cannot be negative.");
+                "Measured client height cannot be negative.");
+        }
+
+        if (nonClientHeightPhysicalPixels < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(nonClientHeightPhysicalPixels));
         }
 
         var width = EffectiveToPhysicalPixels(WidthEffectivePixels, rasterizationScale);
-        var safeWorkAreaHeight = Math.Max(1, workArea.Height - (WorkAreaMarginPhysicalPixels * 2));
-        var workAreaMaximumHeight = PhysicalToEffectivePixels(
-            safeWorkAreaHeight,
+        var maximumOuterHeight = Math.Max(
+            1,
+            workArea.Height - (WorkAreaMarginPhysicalPixels * 2));
+        var maximumClientHeight = Math.Max(
+            1,
+            maximumOuterHeight - nonClientHeightPhysicalPixels);
+        var desiredClientHeight = EffectiveToPhysicalPixels(
+            measuredContentHeightEffectivePixels,
             rasterizationScale);
-        var maximumHeight = Math.Max(
-            MinimumHeightEffectivePixels,
-            Math.Min(MaximumHeightEffectivePixels, workAreaMaximumHeight));
-        var heightEffective = Clamp(
-            Math.Ceiling(measuredContentHeightEffectivePixels),
-            MinimumHeightEffectivePixels,
-            maximumHeight);
-        var height = EffectiveToPhysicalPixels(heightEffective, rasterizationScale);
+        var clientHeight = Math.Min(desiredClientHeight, maximumClientHeight);
+        var height = Math.Min(
+            maximumOuterHeight,
+            clientHeight + nonClientHeightPhysicalPixels);
+        var heightEffective = PhysicalToEffectivePixels(clientHeight, rasterizationScale);
 
         var left = anchor.X + (anchor.Width / 2) - (width / 2);
         var top = anchor.Y - height - WorkAreaMarginPhysicalPixels;
