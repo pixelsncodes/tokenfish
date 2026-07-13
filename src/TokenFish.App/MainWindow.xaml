@@ -81,6 +81,7 @@
                 ToolTipService.ToolTip="Settings">
                 <SymbolIcon
                     AutomationProperties.AccessibilityView="Raw"
+                    FontSize="14"
                     Symbol="Setting" />
             </Button>
 
@@ -95,6 +96,7 @@
                 ToolTipService.ToolTip="Refresh now">
                 <SymbolIcon
                     AutomationProperties.AccessibilityView="Raw"
+                    FontSize="14"
                     Symbol="Refresh" />
             </Button>
         </Grid>
