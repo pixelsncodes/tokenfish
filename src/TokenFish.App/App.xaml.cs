@@ -47,6 +47,7 @@ public partial class App : Application
     {
         _popupWindow = new MainWindow();
         _popupWindow.RefreshRequested += OnPopupRefreshRequested;
+        _popupWindow.SettingsRequested += OnPopupSettingsRequested;
         PopupWindowPlacement.Configure(_popupWindow);
         _window = _popupWindow;
         _window.Closed += OnWindowClosed;
@@ -106,6 +107,7 @@ public partial class App : Application
             if (_popupWindow is not null)
             {
                 _popupWindow.RefreshRequested -= OnPopupRefreshRequested;
+                _popupWindow.SettingsRequested -= OnPopupSettingsRequested;
             }
         }
 
@@ -183,6 +185,8 @@ public partial class App : Application
     private void OnPopupRefreshRequested() =>
         _ = _manualRefreshCommand.RequestAsync(CancellationToken.None);
 
+    private void OnPopupSettingsRequested() => _ = OpenSettingsAsync();
+
     private async Task ExitAsync()
     {
         _shutdownCoordinator ??= new ApplicationShutdownCoordinator(
@@ -221,6 +225,7 @@ public partial class App : Application
         if (_popupWindow is not null)
         {
             _popupWindow.RefreshRequested -= OnPopupRefreshRequested;
+            _popupWindow.SettingsRequested -= OnPopupSettingsRequested;
         }
         _popupWindow?.AllowClose();
         _window.Closed -= OnWindowClosed;

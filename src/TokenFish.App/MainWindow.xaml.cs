@@ -3,7 +3,10 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using TokenFish.Infrastructure;
+using Windows.UI;
 
 namespace TokenFish.App;
 
@@ -32,6 +35,8 @@ public sealed partial class MainWindow : Window
     public event Action? ContentSizeInvalidated;
 
     public event Action? RefreshRequested;
+
+    public event Action? SettingsRequested;
 
     public void AllowClose() => _allowClose = true;
 
@@ -152,27 +157,26 @@ public sealed partial class MainWindow : Window
 
     private static ProviderCardView CreateProviderCard(ProviderCardDisplayState provider)
     {
+        var accent = GetProviderAccent(provider.Provider);
         var card = new Border
         {
-            Padding = new Thickness(12),
-            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(14, 12),
+            CornerRadius = new CornerRadius(12),
             BorderThickness = new Thickness(1),
-            BorderBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
-                "CardStrokeColorDefaultBrush"],
-            Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
-                "CardBackgroundFillColorDefaultBrush"]
+            BorderBrush = CreateBrush(0xFF, 0x29, 0x38, 0x4A),
+            Background = CreateBrush(0xFF, 0x12, 0x1B, 0x26)
         };
 
         var stack = new StackPanel { Spacing = 8 };
         card.Child = stack;
 
-        var header = CreateProviderHeader(provider);
+        var header = CreateProviderHeader(provider, accent);
         stack.Children.Add(header.Root);
 
         var quotaViews = new List<QuotaWindowView>(provider.QuotaWindows.Count);
         foreach (var quotaWindow in provider.QuotaWindows)
         {
-            var quotaView = CreateQuotaWindowSection(quotaWindow);
+            var quotaView = CreateQuotaWindowSection(quotaWindow, accent);
             quotaViews.Add(quotaView);
             stack.Children.Add(quotaView.Root);
         }
@@ -217,12 +221,22 @@ public sealed partial class MainWindow : Window
             footer);
     }
 
-    private static ProviderHeaderView CreateProviderHeader(ProviderCardDisplayState provider)
+    private static ProviderHeaderView CreateProviderHeader(ProviderCardDisplayState provider, Brush accent)
     {
         var grid = new Grid { ColumnSpacing = 12 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+        var nameRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
+        nameRow.Children.Add(new Border
+        {
+            Width = 7,
+            Height = 7,
+            CornerRadius = new CornerRadius(4),
+            Background = accent,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false
+        });
         var name = new TextBlock
         {
             Text = provider.ProviderName,
@@ -230,13 +244,14 @@ public sealed partial class MainWindow : Window
             FontSize = 15,
             TextTrimming = TextTrimming.CharacterEllipsis
         };
-        grid.Children.Add(name);
+        AutomationProperties.SetHeadingLevel(name, AutomationHeadingLevel.Heading2);
+        nameRow.Children.Add(name);
+        grid.Children.Add(nameRow);
 
         var connection = new TextBlock
         {
             Text = provider.ConnectionState,
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
-                "TextFillColorSecondaryBrush"],
+            Foreground = CreateBrush(0xFF, 0xB4, 0xC0, 0xD0),
             TextAlignment = TextAlignment.Right,
             TextWrapping = TextWrapping.NoWrap
         };
@@ -247,9 +262,15 @@ public sealed partial class MainWindow : Window
         return new ProviderHeaderView(grid, name, connection);
     }
 
-    private static QuotaWindowView CreateQuotaWindowSection(PopupQuotaWindowDisplayState quotaWindow)
+    private static QuotaWindowView CreateQuotaWindowSection(
+        PopupQuotaWindowDisplayState quotaWindow,
+        Brush accent)
     {
         var stack = new StackPanel { Spacing = 5 };
+
+        var header = new Grid { ColumnSpacing = 10 };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var label = new TextBlock
         {
@@ -257,27 +278,22 @@ public sealed partial class MainWindow : Window
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             TextWrapping = TextWrapping.WrapWholeWords
         };
-        stack.Children.Add(label);
+        header.Children.Add(label);
 
         var percentageText = new TextBlock
         {
             Text = quotaWindow.PercentageText,
-            FontSize = 20,
+            FontSize = 18,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = accent,
             TextWrapping = TextWrapping.NoWrap
         };
-        stack.Children.Add(percentageText);
+        Grid.SetColumn(percentageText, 1);
+        header.Children.Add(percentageText);
+        stack.Children.Add(header);
 
-        var progress = new ProgressBar
-        {
-            Minimum = 0,
-            Maximum = 100,
-            IsIndeterminate = false,
-            Value = (double)quotaWindow.ProgressValue,
-            Height = 5
-        };
-        AutomationProperties.SetName(progress, quotaWindow.ProgressAutomationName);
-        stack.Children.Add(progress);
+        var rail = CreateQuotaRail(quotaWindow, accent);
+        stack.Children.Add(rail.Root);
 
         TextBlock? relativeReset = null;
         if (quotaWindow.RelativeResetText is not null)
@@ -309,10 +325,81 @@ public sealed partial class MainWindow : Window
             quotaWindow,
             label,
             percentageText,
-            progress,
+            rail,
             relativeReset,
             exactReset);
     }
+
+    private static QuotaRailView CreateQuotaRail(PopupQuotaWindowDisplayState quotaWindow, Brush accent)
+    {
+        const double railWidth = 300;
+        const double crawlerWidth = 24;
+        var canvas = new Canvas
+        {
+            Width = railWidth,
+            Height = 22,
+            IsHitTestVisible = false
+        };
+        canvas.Children.Add(new Border
+        {
+            Width = railWidth,
+            Height = 4,
+            CornerRadius = new CornerRadius(2),
+            Background = CreateBrush(0xFF, 0x29, 0x38, 0x4A),
+            Margin = new Thickness(0, 9, 0, 0)
+        });
+
+        for (var index = 0; index < 12; index++)
+        {
+            var pellet = new Ellipse
+            {
+                Width = 3,
+                Height = 3,
+                Fill = CreateBrush(0xFF, 0x79, 0x8A, 0x9E),
+                Opacity = 0.8
+            };
+            Canvas.SetLeft(pellet, 12 + (index * 23));
+            Canvas.SetTop(pellet, 9.5);
+            canvas.Children.Add(pellet);
+        }
+
+        var crawler = new Canvas { Width = crawlerWidth, Height = 18 };
+        crawler.Children.Add(new Polygon
+        {
+            Points = new PointCollection
+            {
+                new Windows.Foundation.Point(1, 9),
+                new Windows.Foundation.Point(8, 2),
+                new Windows.Foundation.Point(22, 4),
+                new Windows.Foundation.Point(24, 9),
+                new Windows.Foundation.Point(22, 14),
+                new Windows.Foundation.Point(8, 16)
+            },
+            Fill = accent
+        });
+        crawler.Children.Add(new Rectangle
+        {
+            Width = 3,
+            Height = 3,
+            Fill = CreateBrush(0xFF, 0x0B, 0x11, 0x1A)
+        });
+        Canvas.SetLeft(crawler.Children[1], 15);
+        Canvas.SetTop(crawler.Children[1], 6);
+        canvas.Children.Add(crawler);
+        Canvas.SetTop(crawler, 1);
+
+        var view = new QuotaRailView(canvas, crawler, railWidth, crawlerWidth);
+        view.Update(quotaWindow);
+        return view;
+    }
+
+    private static Brush GetProviderAccent(TokenFish.Core.Models.ProviderKind provider) =>
+        provider == TokenFish.Core.Models.ProviderKind.Claude
+            ? CreateBrush(0xFF, 0xFF, 0x88, 0x5A)
+            : CreateBrush(0xFF, 0x52, 0xD6, 0xD0);
+
+    private static Brush CreateBrush(byte alpha, byte red, byte green, byte blue) =>
+        new SolidColorBrush(Color.FromArgb(alpha, red, green, blue));
 
     private static ActivitySectionView CreateActivitySection(IReadOnlyList<PopupActivityDisplayState> activityRows)
     {
@@ -501,7 +588,7 @@ public sealed partial class MainWindow : Window
             PopupQuotaWindowDisplayState state,
             TextBlock label,
             TextBlock percentageText,
-            ProgressBar progress,
+            QuotaRailView rail,
             TextBlock? relativeReset,
             TextBlock? exactReset)
         {
@@ -509,7 +596,7 @@ public sealed partial class MainWindow : Window
             State = state;
             Label = label;
             PercentageText = percentageText;
-            Progress = progress;
+            Rail = rail;
             RelativeReset = relativeReset;
             ExactReset = exactReset;
         }
@@ -522,7 +609,7 @@ public sealed partial class MainWindow : Window
 
         private TextBlock PercentageText { get; }
 
-        private ProgressBar Progress { get; }
+        private QuotaRailView Rail { get; }
 
         private TextBlock? RelativeReset { get; }
 
@@ -532,15 +619,7 @@ public sealed partial class MainWindow : Window
         {
             SetTextIfChanged(Label, state.Label);
             SetTextIfChanged(PercentageText, state.PercentageText);
-            if ((decimal)Progress.Value != state.ProgressValue)
-            {
-                Progress.Value = (double)state.ProgressValue;
-            }
-
-            if (State.ProgressAutomationName != state.ProgressAutomationName)
-            {
-                AutomationProperties.SetName(Progress, state.ProgressAutomationName);
-            }
+            Rail.Update(state);
 
             if (RelativeReset is not null)
             {
@@ -553,6 +632,33 @@ public sealed partial class MainWindow : Window
             }
 
             State = state;
+        }
+    }
+
+    private sealed class QuotaRailView
+    {
+        public QuotaRailView(Canvas root, Canvas crawler, double railWidth, double crawlerWidth)
+        {
+            Root = root;
+            _crawler = crawler;
+            _railWidth = railWidth;
+            _crawlerWidth = crawlerWidth;
+        }
+
+        private readonly Canvas _crawler;
+        private readonly double _railWidth;
+        private readonly double _crawlerWidth;
+
+        public Canvas Root { get; }
+
+        public void Update(PopupQuotaWindowDisplayState state)
+        {
+            Canvas.SetLeft(
+                _crawler,
+                QuotaRailPositionCalculator.CalculateCrawlerOffset(
+                    state.ProgressValue,
+                    _railWidth,
+                    _crawlerWidth));
         }
     }
 
@@ -623,6 +729,13 @@ public sealed partial class MainWindow : Window
         _ = sender;
         _ = args;
         RefreshRequested?.Invoke();
+    }
+
+    private void OnSettingsClicked(object sender, RoutedEventArgs args)
+    {
+        _ = sender;
+        _ = args;
+        SettingsRequested?.Invoke();
     }
 
     private void OnAppWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)

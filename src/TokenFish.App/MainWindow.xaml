@@ -7,18 +7,16 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Title="TokenFish"
     mc:Ignorable="d">
-    <Window.SystemBackdrop>
-        <MicaBackdrop />
-    </Window.SystemBackdrop>
-
     <Grid
         x:Name="RootGrid"
-        Padding="16"
-        RowSpacing="10">
+        Padding="16,14"
+        Background="#0B111A"
+        RequestedTheme="Dark"
+        RowSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -26,17 +24,19 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <Image
                 x:Name="HeaderIcon"
-                Width="24"
-                Height="24"
+                Width="26"
+                Height="26"
                 Visibility="Collapsed" />
 
             <StackPanel Grid.Column="1" Spacing="1">
                 <TextBlock
-                    FontSize="17"
+                    FontSize="18"
                     FontWeight="SemiBold"
                     Text="TokenFish" />
                 <TextBlock
@@ -44,6 +44,20 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Text="Starting TokenFish" />
             </StackPanel>
+
+            <Button
+                x:Name="SettingsButton"
+                Grid.Column="2"
+                AutomationProperties.Name="Open TokenFish settings"
+                Click="OnSettingsClicked"
+                Content="Settings" />
+
+            <Button
+                x:Name="RefreshNowButton"
+                Grid.Column="3"
+                AutomationProperties.Name="Refresh usage now"
+                Click="OnRefreshNowClicked"
+                Content="Refresh" />
         </Grid>
 
         <Border
@@ -61,32 +75,16 @@
         <ScrollViewer
             x:Name="ProvidersScrollViewer"
             Grid.Row="2"
-            VerticalScrollBarVisibility="Auto">
+            VerticalScrollBarVisibility="Disabled">
             <StackPanel x:Name="ProvidersPanel" Spacing="10" />
         </ScrollViewer>
 
-        <Grid
+        <TextBlock
+            x:Name="RefreshCommandStatusText"
             Grid.Row="3"
-            ColumnSpacing="10">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <TextBlock
-                x:Name="RefreshCommandStatusText"
-                VerticalAlignment="Center"
-                AutomationProperties.LiveSetting="Polite"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                TextWrapping="Wrap"
-                Visibility="Collapsed" />
-
-            <Button
-                x:Name="RefreshNowButton"
-                Grid.Column="1"
-                AutomationProperties.Name="Refresh usage now"
-                Click="OnRefreshNowClicked"
-                Content="Refresh now" />
-        </Grid>
+            AutomationProperties.LiveSetting="Polite"
+            Foreground="#B4C0D0"
+            TextWrapping="Wrap"
+            Visibility="Collapsed" />
     </Grid>
 </Window>
