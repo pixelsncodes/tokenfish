@@ -92,6 +92,57 @@ public sealed class CodexRuntimeSettingsPresenterTests
     }
 
     [Fact]
+    public async Task EditableProviderSelectionUpdatesReadinessRowsWithoutPersisting()
+    {
+        var readinessProvider = new RecordingReadinessProvider();
+        var store = new RecordingSettingsStore(new AppSettings());
+        var presenter = CreatePresenter(store, readinessProvider);
+        await presenter.LoadAsync(CancellationToken.None);
+
+        var state = presenter.SelectProviderSelectionMode(ProviderSelectionMode.ClaudeOnly);
+
+        Assert.Equal([ProviderKind.Claude], state.ReadinessRows.Select(row => row.Provider));
+        Assert.Equal(0, store.SaveCallCount);
+        Assert.Equal(3, readinessProvider.CallCount);
+    }
+
+    [Fact]
+    public async Task CombinedModeShowsBothReadinessRows()
+    {
+        var presenter = CreatePresenter(new AppSettings());
+        await presenter.LoadAsync(CancellationToken.None);
+
+        var state = presenter.SelectProviderSelectionMode(ProviderSelectionMode.Both);
+
+        Assert.Equal([ProviderKind.Codex, ProviderKind.Claude], state.ReadinessRows.Select(row => row.Provider));
+    }
+
+    [Fact]
+    public async Task ReadinessRowsContainNoRawExceptionTextOrPaths()
+    {
+        var readinessProvider = new FixedReadinessProvider(
+        [
+            new ProviderReadinessDisplayState(
+                ProviderKind.Claude,
+                "Claude",
+                ProviderReadinessKind.Unavailable,
+                "Unavailable",
+                "Claude usage is unavailable.")
+        ]);
+        var presenter = CreatePresenter(
+            new RecordingSettingsStore(
+                new AppSettings { ProviderSelectionMode = ProviderSelectionMode.ClaudeOnly }),
+            readinessProvider);
+
+        var state = await presenter.LoadAsync(CancellationToken.None);
+        var row = Assert.Single(state.ReadinessRows);
+
+        Assert.DoesNotContain("Exception", row.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("C:\\", row.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/mnt/", row.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void SelectingNativeWindowsDisablesAndClearsWslDistribution()
     {
         var presenter = CreatePresenter(
@@ -279,8 +330,51 @@ public sealed class CodexRuntimeSettingsPresenterTests
     private static CodexRuntimeSettingsPresenter CreatePresenter(AppSettings settings) =>
         CreatePresenter(new RecordingSettingsStore(settings));
 
-    private static CodexRuntimeSettingsPresenter CreatePresenter(RecordingSettingsStore store) =>
-        new(new CodexRuntimeSettingsEditor(store));
+    private static CodexRuntimeSettingsPresenter CreatePresenter(
+        RecordingSettingsStore store,
+        IProviderReadinessProvider? readinessProvider = null) =>
+        new(new CodexRuntimeSettingsEditor(store), readinessProvider);
+
+    private sealed class RecordingReadinessProvider : IProviderReadinessProvider
+    {
+        public int CallCount { get; private set; }
+
+        public IReadOnlyList<ProviderReadinessDisplayState> CreateReadinessRows(
+            ProviderSelectionMode providerSelectionMode,
+            CodexRuntimeMode codexRuntimeMode)
+        {
+            _ = codexRuntimeMode;
+            CallCount++;
+            return providerSelectionMode switch
+            {
+                ProviderSelectionMode.CodexOnly => [CreateRow(ProviderKind.Codex)],
+                ProviderSelectionMode.ClaudeOnly => [CreateRow(ProviderKind.Claude)],
+                ProviderSelectionMode.Both => [CreateRow(ProviderKind.Codex), CreateRow(ProviderKind.Claude)],
+                _ => []
+            };
+        }
+    }
+
+    private sealed class FixedReadinessProvider(
+        IReadOnlyList<ProviderReadinessDisplayState> rows) : IProviderReadinessProvider
+    {
+        public IReadOnlyList<ProviderReadinessDisplayState> CreateReadinessRows(
+            ProviderSelectionMode providerSelectionMode,
+            CodexRuntimeMode codexRuntimeMode)
+        {
+            _ = providerSelectionMode;
+            _ = codexRuntimeMode;
+            return rows;
+        }
+    }
+
+    private static ProviderReadinessDisplayState CreateRow(ProviderKind provider) =>
+        new(
+            provider,
+            provider.ToString(),
+            ProviderReadinessKind.WaitingForData,
+            "Waiting for data",
+            "Waiting for normalized usage.");
 
     private sealed class RecordingSettingsStore : IAppSettingsStore
     {

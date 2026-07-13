@@ -89,6 +89,19 @@
                     </StackPanel>
                 </StackPanel>
 
+                <StackPanel
+                    x:Name="ProviderReadinessSection"
+                    Spacing="8"
+                    Visibility="Collapsed">
+                    <TextBlock
+                        FontSize="16"
+                        FontWeight="SemiBold"
+                        Text="Provider readiness" />
+                    <StackPanel
+                        x:Name="ProviderReadinessRowsStackPanel"
+                        Spacing="8" />
+                </StackPanel>
+
                 <StackPanel Spacing="4">
                     <TextBlock
                         FontSize="16"

@@ -129,7 +129,9 @@ public partial class App : Application
     private ISettingsWindowShell CreateSettingsWindowShell()
     {
         var editor = new CodexRuntimeSettingsEditor(_settingsStore);
-        var presenter = new CodexRuntimeSettingsPresenter(editor);
+        var readinessProvider = new ProviderReadinessProvider(
+            _runtimeHost.Services?.ProviderRuntimeSnapshotStore);
+        var presenter = new CodexRuntimeSettingsPresenter(editor, readinessProvider);
         return new SettingsWindowShell(new SettingsWindow(presenter));
     }
 

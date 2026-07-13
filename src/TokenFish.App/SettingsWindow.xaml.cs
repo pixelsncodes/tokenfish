@@ -1,4 +1,5 @@
 using Microsoft.UI.Windowing;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -156,6 +157,7 @@ public sealed partial class SettingsWindow : Window
             StatusTextBlock.Text = state.StatusMessage;
             StatusBorder.Visibility = state.IsStatusVisible ? Visibility.Visible : Visibility.Collapsed;
             StatusBorder.BorderBrush = GetStatusBorderBrush(state.StatusKind);
+            RenderReadinessRows(state.ReadinessRows);
         }
         finally
         {
@@ -163,6 +165,36 @@ public sealed partial class SettingsWindow : Window
         }
 
         ResizeToContent();
+    }
+
+    private void RenderReadinessRows(
+        IReadOnlyList<ProviderReadinessDisplayState> readinessRows)
+    {
+        ProviderReadinessRowsStackPanel.Children.Clear();
+        ProviderReadinessSection.Visibility =
+            readinessRows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        var secondaryBrush = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        foreach (var row in readinessRows)
+        {
+            var rowPanel = new StackPanel
+            {
+                Spacing = 2
+            };
+            rowPanel.Children.Add(new TextBlock
+            {
+                FontWeight = FontWeights.SemiBold,
+                Text = $"{row.ProviderName}: {row.Label}",
+                TextWrapping = TextWrapping.Wrap
+            });
+            rowPanel.Children.Add(new TextBlock
+            {
+                Foreground = secondaryBrush,
+                Text = row.Description,
+                TextWrapping = TextWrapping.Wrap
+            });
+            ProviderReadinessRowsStackPanel.Children.Add(rowPanel);
+        }
     }
 
     private void ResizeToContent()

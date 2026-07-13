@@ -33,13 +33,17 @@ public sealed class CodexRuntimeSettingsPresenter
     ];
 
     private readonly CodexRuntimeSettingsEditor _editor;
+    private readonly IProviderReadinessProvider _readinessProvider;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
 
-    public CodexRuntimeSettingsPresenter(CodexRuntimeSettingsEditor editor)
+    public CodexRuntimeSettingsPresenter(
+        CodexRuntimeSettingsEditor editor,
+        IProviderReadinessProvider? readinessProvider = null)
     {
         ArgumentNullException.ThrowIfNull(editor);
 
         _editor = editor;
+        _readinessProvider = readinessProvider ?? new ProviderReadinessProvider(null);
         State = CreateState(
             ProviderSelectionMode.CodexOnly,
             CodexRuntimeMode.WslLoginShell,
@@ -236,7 +240,7 @@ public sealed class CodexRuntimeSettingsPresenter
         return State;
     }
 
-    private static CodexRuntimeSettingsViewState CreateState(
+    private CodexRuntimeSettingsViewState CreateState(
         ProviderSelectionMode providerSelectionMode,
         CodexRuntimeMode runtimeMode,
         string? distributionName,
@@ -268,6 +272,7 @@ public sealed class CodexRuntimeSettingsPresenter
             CodexSettingsRetainedDescription,
             isClaudeEnabled,
             ClaudeBridgeDescription,
+            _readinessProvider.CreateReadinessRows(providerSelectionMode, runtimeMode),
             !isSaving,
             isSaving,
             statusMessage,
@@ -311,6 +316,7 @@ public sealed record CodexRuntimeSettingsViewState(
     string CodexSettingsRetainedMessage,
     bool IsClaudeBridgeDescriptionVisible,
     string ClaudeBridgeDescription,
+    IReadOnlyList<ProviderReadinessDisplayState> ReadinessRows,
     bool CanSave,
     bool IsSaving,
     string StatusMessage,
