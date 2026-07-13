@@ -170,9 +170,6 @@ public sealed class LocalAppSettingsStore : IAppSettingsStore
 
         if (persistedSettings is null ||
             persistedSettings.SchemaVersion != CurrentSchemaVersion ||
-            !TryParseDefinedEnum(
-                persistedSettings.ProviderSelectionMode,
-                out ProviderSelectionMode providerSelectionMode) ||
             !TryParseDefinedEnum(persistedSettings.ThemeMode, out ThemeMode themeMode) ||
             !TryParseDefinedEnum(
                 persistedSettings.CodexRuntimeMode,
@@ -180,6 +177,13 @@ public sealed class LocalAppSettingsStore : IAppSettingsStore
         {
             return false;
         }
+
+        var defaultSettings = new AppSettings();
+        var providerSelectionMode = TryParseDefinedEnum(
+            persistedSettings.ProviderSelectionMode,
+            out ProviderSelectionMode persistedProviderSelectionMode)
+            ? persistedProviderSelectionMode
+            : defaultSettings.ProviderSelectionMode;
 
         var candidateSettings = new AppSettings
         {

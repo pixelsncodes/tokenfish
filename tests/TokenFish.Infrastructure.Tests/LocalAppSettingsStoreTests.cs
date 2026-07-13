@@ -211,7 +211,31 @@ public sealed class LocalAppSettingsStoreTests
     }
 
     [Fact]
-    public async Task UnknownProviderSelectionModeRecoversToDefaults()
+    public async Task MissingProviderSelectionModeUsesDefaultAndPreservesRuntimeSettings()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var store = CreateStore(directory);
+        await WriteSettingsJsonAsync(
+            store.SettingsFilePath,
+            """
+            {
+              "SchemaVersion": 1,
+              "ThemeMode": "Arcade",
+              "CodexRuntimeMode": "Wsl",
+              "CodexWslDistributionName": "Ubuntu-24.04"
+            }
+            """);
+
+        var settings = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderSelectionMode.CodexOnly, settings.ProviderSelectionMode);
+        Assert.Equal(ThemeMode.Arcade, settings.ThemeMode);
+        Assert.Equal(CodexRuntimeMode.Wsl, settings.CodexRuntimeMode);
+        Assert.Equal("Ubuntu-24.04", settings.CodexWslDistributionName);
+    }
+
+    [Fact]
+    public async Task UnknownProviderSelectionModeUsesDefaultAndPreservesRuntimeSettings()
     {
         using var directory = TemporaryDirectory.Create();
         var store = CreateStore(directory);
@@ -221,15 +245,43 @@ public sealed class LocalAppSettingsStoreTests
             {
               "SchemaVersion": 1,
               "ProviderSelectionMode": "FutureProvider",
-              "ThemeMode": "Minimal",
-              "CodexRuntimeMode": "WslLoginShell",
-              "CodexWslDistributionName": null
+              "ThemeMode": "Arcade",
+              "CodexRuntimeMode": "Wsl",
+              "CodexWslDistributionName": "Ubuntu"
             }
             """);
 
         var settings = await store.LoadAsync(CancellationToken.None);
 
-        AssertDefaultSettings(settings);
+        Assert.Equal(ProviderSelectionMode.CodexOnly, settings.ProviderSelectionMode);
+        Assert.Equal(ThemeMode.Arcade, settings.ThemeMode);
+        Assert.Equal(CodexRuntimeMode.Wsl, settings.CodexRuntimeMode);
+        Assert.Equal("Ubuntu", settings.CodexWslDistributionName);
+    }
+
+    [Fact]
+    public async Task NumericProviderSelectionModeOutsideEnumUsesDefaultAndPreservesRuntimeSettings()
+    {
+        using var directory = TemporaryDirectory.Create();
+        var store = CreateStore(directory);
+        await WriteSettingsJsonAsync(
+            store.SettingsFilePath,
+            """
+            {
+              "SchemaVersion": 1,
+              "ProviderSelectionMode": "999",
+              "ThemeMode": "Arcade",
+              "CodexRuntimeMode": "WslLoginShell",
+              "CodexWslDistributionName": "Ubuntu"
+            }
+            """);
+
+        var settings = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(ProviderSelectionMode.CodexOnly, settings.ProviderSelectionMode);
+        Assert.Equal(ThemeMode.Arcade, settings.ThemeMode);
+        Assert.Equal(CodexRuntimeMode.WslLoginShell, settings.CodexRuntimeMode);
+        Assert.Equal("Ubuntu", settings.CodexWslDistributionName);
     }
 
     [Fact]
