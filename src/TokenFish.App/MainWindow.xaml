@@ -79,10 +79,16 @@
                 AutomationProperties.Name="Settings"
                 Click="OnSettingsClicked"
                 ToolTipService.ToolTip="Settings">
-                <SymbolIcon
+                <Viewbox
                     AutomationProperties.AccessibilityView="Raw"
-                    FontSize="14"
-                    Symbol="Setting" />
+                    Width="14"
+                    Height="14"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                    <SymbolIcon
+                        AutomationProperties.AccessibilityView="Raw"
+                        Symbol="Setting" />
+                </Viewbox>
             </Button>
 
             <Button
@@ -94,10 +100,16 @@
                 AutomationProperties.Name="Refresh now"
                 Click="OnRefreshNowClicked"
                 ToolTipService.ToolTip="Refresh now">
-                <SymbolIcon
+                <Viewbox
                     AutomationProperties.AccessibilityView="Raw"
-                    FontSize="14"
-                    Symbol="Refresh" />
+                    Width="14"
+                    Height="14"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                    <SymbolIcon
+                        AutomationProperties.AccessibilityView="Raw"
+                        Symbol="Refresh" />
+                </Viewbox>
             </Button>
         </Grid>
 
