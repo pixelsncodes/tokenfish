@@ -564,11 +564,6 @@ public sealed partial class MainWindow : Window
 
     private void SetRefreshCommandState(ManualRefreshCommandState state)
     {
-        if (!Equals(RefreshNowButton.Content, state.Label))
-        {
-            RefreshNowButton.Content = state.Label;
-        }
-
         RefreshNowButton.IsEnabled = state.IsEnabled;
         SetTextIfChanged(RefreshCommandStatusText, state.StatusText);
         SetVisibilityIfChanged(

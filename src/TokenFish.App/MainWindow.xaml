@@ -73,16 +73,30 @@
             <Button
                 x:Name="SettingsButton"
                 Grid.Column="2"
-                AutomationProperties.Name="Open TokenFish settings"
+                Width="36"
+                Height="36"
+                Padding="0"
+                AutomationProperties.Name="Settings"
                 Click="OnSettingsClicked"
-                Content="Settings" />
+                ToolTipService.ToolTip="Settings">
+                <SymbolIcon
+                    AutomationProperties.AccessibilityView="Raw"
+                    Symbol="Setting" />
+            </Button>
 
             <Button
                 x:Name="RefreshNowButton"
                 Grid.Column="3"
-                AutomationProperties.Name="Refresh usage now"
+                Width="36"
+                Height="36"
+                Padding="0"
+                AutomationProperties.Name="Refresh now"
                 Click="OnRefreshNowClicked"
-                Content="Refresh" />
+                ToolTipService.ToolTip="Refresh now">
+                <SymbolIcon
+                    AutomationProperties.AccessibilityView="Raw"
+                    Symbol="Refresh" />
+            </Button>
         </Grid>
 
         <Border
