@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\src\TokenFish.App\OnboardingWindowLifetime.cs" Link="OnboardingWindowLifetime.cs" />
     <ProjectReference Include="..\..\src\TokenFish.Core\TokenFish.Core.csproj" />
     <ProjectReference Include="..\..\src\TokenFish.Infrastructure\TokenFish.Infrastructure.csproj" />
   </ItemGroup>

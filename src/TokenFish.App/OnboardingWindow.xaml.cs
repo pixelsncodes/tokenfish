@@ -17,7 +17,7 @@ public sealed partial class OnboardingWindow : Window
     private AppSettings? _effectiveSettings;
     private readonly OnboardingVerificationPresenter _verificationPresenter = new();
     private OnboardingVerificationDisplayState? _verificationState;
-    private bool _isRechecking;
+    private readonly OnboardingWindowLifetime _lifetime = new();
 
     public OnboardingWindow(
         OnboardingFlowController flow,
@@ -34,13 +34,8 @@ public sealed partial class OnboardingWindow : Window
             presenter.IsMaximizable = true;
         }
         AppWindow.Resize(new Windows.Graphics.SizeInt32(760, 620));
-        Closed += (_, _) =>
-        {
-            if (!_terminalResult)
-            {
-                Deferred?.Invoke();
-            }
-        };
+        AppWindow.Closing += OnAppWindowClosing;
+        Closed += OnClosed;
         Render();
     }
 
@@ -92,6 +87,11 @@ public sealed partial class OnboardingWindow : Window
 
     public void ShowVerification(IOnboardingReadinessCoordinator coordinator, AppSettings effectiveSettings)
     {
+        if (!_lifetime.IsActive)
+        {
+            return;
+        }
+
         _readinessCoordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
         _effectiveSettings = effectiveSettings ?? throw new ArgumentNullException(nameof(effectiveSettings));
         _verificationState = _verificationPresenter.Present(coordinator.Evaluate(effectiveSettings));
@@ -100,30 +100,51 @@ public sealed partial class OnboardingWindow : Window
 
     private async void OnRecheckClicked(object sender, RoutedEventArgs args)
     {
-        if (_isRechecking || _readinessCoordinator is null || _effectiveSettings is null)
+        if (_readinessCoordinator is null || _effectiveSettings is null ||
+            !_lifetime.TryBeginRecheck(out var cancellationToken))
         {
             return;
         }
-        _isRechecking = true;
         Render();
         try
         {
-            _verificationState = _verificationPresenter.Present(await _readinessCoordinator.RecheckAsync(_effectiveSettings, CancellationToken.None));
+            var readiness = await _readinessCoordinator.RecheckAsync(_effectiveSettings, cancellationToken);
+            if (!_lifetime.IsActive)
+            {
+                return;
+            }
+
+            _verificationState = _verificationPresenter.Present(readiness);
         }
         catch (OperationCanceledException)
         {
         }
         catch
         {
-            if (_verificationState is not null)
+            if (_lifetime.IsActive && _verificationState is not null)
             {
                 _verificationState = _verificationState with { HasRecheckError = true, Announcement = "Recheck could not be completed. Try again." };
             }
         }
         finally
         {
-            _isRechecking = false;
-            Render();
+            _lifetime.EndRecheck();
+            if (_lifetime.IsActive)
+            {
+                Render();
+            }
+        }
+    }
+
+    private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args) => _lifetime.BeginClosing();
+
+    private void OnClosed(object sender, WindowEventArgs args)
+    {
+        AppWindow.Closing -= OnAppWindowClosing;
+        _lifetime.Dispose();
+        if (!_terminalResult)
+        {
+            Deferred?.Invoke();
         }
     }
 
@@ -184,9 +205,9 @@ public sealed partial class OnboardingWindow : Window
         if (_verificationState is not null)
         {
             VerificationSummaryTextBlock.Text = _verificationState.Announcement;
-            RecheckButton.IsEnabled = !_isRechecking;
-            RecheckProgressRing.IsActive = _isRechecking;
-            RecheckProgressRing.Visibility = _isRechecking ? Visibility.Visible : Visibility.Collapsed;
+            RecheckButton.IsEnabled = !_lifetime.IsRechecking;
+            RecheckProgressRing.IsActive = _lifetime.IsRechecking;
+            RecheckProgressRing.Visibility = _lifetime.IsRechecking ? Visibility.Visible : Visibility.Collapsed;
             VerificationProvidersPanel.Children.Clear();
             foreach (var provider in _verificationState.Providers)
             {
