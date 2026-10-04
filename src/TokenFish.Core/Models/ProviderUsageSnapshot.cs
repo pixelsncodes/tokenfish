@@ -20,6 +20,7 @@ public sealed record ProviderUsageSnapshot
     public IReadOnlyList<NormalizedQuotaWindow> QuotaWindows { get; }
 
     public IReadOnlyList<NormalizedActivityMetric> ActivityMetrics { get; }
+    public IReadOnlyList<DailyTokenActivity> DailyActivity { get; }
 
     public DateTimeOffset CapturedAt { get; }
 
@@ -40,7 +41,8 @@ public sealed record ProviderUsageSnapshot
         DateTimeOffset capturedAt,
         IReadOnlyList<NormalizedQuotaWindow>? quotaWindows = null,
         IReadOnlyList<NormalizedActivityMetric>? activityMetrics = null,
-        DateTimeOffset? sourceObservedAt = null)
+        DateTimeOffset? sourceObservedAt = null,
+        IReadOnlyList<DailyTokenActivity>? dailyActivity = null)
     {
         Provider = provider;
         ConnectionState = connectionState;
@@ -50,7 +52,10 @@ public sealed record ProviderUsageSnapshot
         WeeklyTokens = weeklyTokens ?? throw new ArgumentNullException(nameof(weeklyTokens));
         QuotaWindows = quotaWindows?.ToArray() ?? [];
         ActivityMetrics = activityMetrics?.ToArray() ?? [];
+        DailyActivity = dailyActivity?.ToArray() ?? [];
         CapturedAt = capturedAt.ToUniversalTime();
         SourceObservedAt = sourceObservedAt?.ToUniversalTime();
     }
 }
+
+public sealed record DailyTokenActivity(DateOnly Date, long Tokens);

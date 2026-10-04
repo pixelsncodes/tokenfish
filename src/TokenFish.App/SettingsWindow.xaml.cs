@@ -7,6 +7,7 @@ using TokenFish.Core.Models;
 using TokenFish.App.Platform;
 using TokenFish.Infrastructure;
 using Windows.Graphics;
+using TokenFish.Core.Settings;
 
 namespace TokenFish.App;
 
@@ -17,20 +18,32 @@ public sealed partial class SettingsWindow : Window
     private bool _isLoaded;
     private bool _isPositioned;
     private bool _updatingControls;
+    private readonly IAppSettingsStore? _visualSettingsStore;
+    private readonly SemaphoreSlim _visualSaveGate;
+    private bool _loadingVisualControls;
+    public event Action<AppSettings>? AppearanceChanged;
 
     public SettingsWindow(
         CodexRuntimeSettingsPresenter presenter,
-        Func<RectInt32?>? getPreferredPlacementAnchor = null)
+        Func<RectInt32?>? getPreferredPlacementAnchor = null,
+        IAppSettingsStore? visualSettingsStore = null,
+        SemaphoreSlim? settingsSaveGate = null)
     {
         ArgumentNullException.ThrowIfNull(presenter);
 
         _presenter = presenter;
+        _visualSettingsStore = visualSettingsStore;
+        _visualSaveGate = settingsSaveGate ?? new SemaphoreSlim(1,1);
         _getPreferredPlacementAnchor = getPreferredPlacementAnchor ?? (() => null);
         InitializeComponent();
         Title = "TokenFish Settings";
         InitializeWindowSize();
         InitializeRuntimeModes();
         RootGrid.Loaded += OnRootGridLoaded;
+        ClaudeSetupSection.SizeChanged += (_,_) => ResizeToContent(ensurePositioned:true);
+        VersionTextBlock.Text = "TokenFish " + typeof(App).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion.Split('+')[0];
     }
 
     private async void OnRootGridLoaded(object sender, RoutedEventArgs args)
@@ -41,6 +54,8 @@ public sealed partial class SettingsWindow : Window
         ApplyState(
             await _presenter.LoadAsync(CancellationToken.None),
             ensurePositioned: true);
+        if (_visualSettingsStore is not null)
+            SetVisualControls(await _visualSettingsStore.LoadAsync(CancellationToken.None));
     }
 
     private void InitializeRuntimeModes()
@@ -115,7 +130,9 @@ public sealed partial class SettingsWindow : Window
         _ = sender;
         _ = args;
         ApplyState(_presenter.State with { IsSaving = true, CanSave = false });
-        ApplyState(await _presenter.SaveAsync(CancellationToken.None));
+        await _visualSaveGate.WaitAsync();
+        try { ApplyState(await _presenter.SaveAsync(CancellationToken.None)); }
+        finally { _visualSaveGate.Release(); }
         FocusRequestedControl(_presenter.State.FocusTarget);
     }
 
@@ -128,6 +145,58 @@ public sealed partial class SettingsWindow : Window
 
     public void CaptureCurrentPlacement() =>
         SettingsWindowPlacementService.CaptureCurrentPosition(this);
+
+    public void RepositionForInvocation()
+    {
+        _isPositioned = false;
+        ResizeToContent(ensurePositioned: true);
+    }
+
+    internal void SetVisualControls(AppSettings settings)
+    {
+        _loadingVisualControls = true;
+        WidgetVisibleCheckBox.IsChecked=settings.IsDesktopWidgetVisible;
+        WidgetOnTopCheckBox.IsChecked=settings.IsDesktopWidgetAlwaysOnTop;
+        foreach(ComboBoxItem item in WidgetCornerComboBox.Items)
+            if((string)item.Tag==settings.DesktopWidgetCorner.ToString()) WidgetCornerComboBox.SelectedItem=item;
+        var theme=settings.ThemeMode switch {ThemeMode.Light=>"Light",ThemeMode.Dark or ThemeMode.Arcade=>"Dark",_=>"System"};
+        foreach(ComboBoxItem item in ThemeComboBox.Items)
+            if((string)item.Tag==theme) ThemeComboBox.SelectedItem=item;
+        TokenFishAppearance.Apply(RootGrid,settings.ThemeMode);
+        _loadingVisualControls=false;
+    }
+
+    private void OnSectionClicked(object sender,RoutedEventArgs args)
+    {
+        var section=(sender as Button)?.Tag as string;
+        ConnectionsPanel.Visibility=section=="connections"?Visibility.Visible:Visibility.Collapsed;
+        DesktopPanel.Visibility=section=="desktop"?Visibility.Visible:Visibility.Collapsed;
+        AppearancePanel.Visibility=section=="appearance"?Visibility.Visible:Visibility.Collapsed;
+        SaveButton.Visibility=section=="connections"?Visibility.Visible:Visibility.Collapsed;
+        _isPositioned=false;
+        ResizeToContent(ensurePositioned:true);
+    }
+    private void OnVisualOptionChanged(object sender,RoutedEventArgs args)=>SaveVisualOptions();
+    private void OnVisualSelectionChanged(object sender,SelectionChangedEventArgs args)=>SaveVisualOptions();
+    private async void SaveVisualOptions()
+    {
+        if(!_isLoaded||_loadingVisualControls||_visualSettingsStore is null||
+            ThemeComboBox.SelectedItem is not ComboBoxItem themeItem||WidgetCornerComboBox.SelectedItem is not ComboBoxItem cornerItem) return;
+        if(!Enum.TryParse<ThemeMode>((string)themeItem.Tag,out var theme)||
+            !Enum.TryParse<DesktopWidgetCorner>((string)cornerItem.Tag,out var corner)) return;
+        var visible=WidgetVisibleCheckBox.IsChecked==true; var onTop=WidgetOnTopCheckBox.IsChecked==true;
+        await _visualSaveGate.WaitAsync();
+        try
+        {
+            var current=await _visualSettingsStore.LoadAsync(CancellationToken.None);
+            var saved=current with {ThemeMode=theme,IsDesktopWidgetVisible=visible,IsDesktopWidgetAlwaysOnTop=onTop,DesktopWidgetCorner=corner};
+            await _visualSettingsStore.SaveAsync(saved,CancellationToken.None);
+            TokenFishAppearance.Apply(RootGrid,saved.ThemeMode);
+            AppearanceChanged?.Invoke(saved); VisualStatusTextBlock.Text="Applied";
+        }
+        catch {VisualStatusTextBlock.Text="Could not save. Please try again.";}
+        finally {_visualSaveGate.Release();}
+    }
 
     private void ApplyState(
         CodexRuntimeSettingsViewState state,

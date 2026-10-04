@@ -7,13 +7,10 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Title="TokenFish Settings"
     mc:Ignorable="d">
-    <Window.SystemBackdrop>
-        <MicaBackdrop />
-    </Window.SystemBackdrop>
-
     <Grid
         x:Name="RootGrid"
         Padding="24"
+        Background="{ThemeResource TokenFishSurfaceBrush}"
         RowSpacing="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -28,15 +25,21 @@
                 Text="TokenFish Settings" />
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="Saved runtime changes apply after TokenFish is restarted."
+                Text="Make TokenFish feel at home on your desktop."
                 TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+                <Button x:Name="ConnectionsTab" Content="Connections" Tag="connections" Click="OnSectionClicked" />
+                <Button x:Name="DesktopTab" Content="Desktop" Tag="desktop" Click="OnSectionClicked" />
+                <Button x:Name="AppearanceTab" Content="Appearance" Tag="appearance" Click="OnSectionClicked" />
+            </StackPanel>
         </StackPanel>
 
         <ScrollViewer
             Grid.Row="1"
             HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="14">
+            <Grid>
+            <StackPanel x:Name="ConnectionsPanel" Spacing="14">
                 <StackPanel Spacing="4">
                     <TextBlock
                         FontSize="16"
@@ -102,14 +105,12 @@
                         Spacing="8" />
                 </StackPanel>
 
-                <StackPanel
+                <Expander
                     x:Name="ClaudeSetupSection"
-                    Spacing="8"
+                    Header="Claude setup instructions"
+                    HorizontalAlignment="Stretch"
                     Visibility="Collapsed">
-                    <TextBlock
-                        FontSize="16"
-                        FontWeight="SemiBold"
-                        Text="Claude setup" />
+                    <StackPanel Spacing="8">
                     <TextBlock
                         x:Name="ClaudeSetupDescriptionTextBlock"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -154,7 +155,8 @@
                         x:Name="ClaudeSetupNextStepsTextBlock"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         TextWrapping="Wrap" />
-                </StackPanel>
+                    </StackPanel>
+                </Expander>
 
                 <StackPanel Spacing="4">
                     <TextBlock
@@ -266,6 +268,31 @@
                         TextWrapping="Wrap" />
                 </Border>
             </StackPanel>
+            <StackPanel x:Name="DesktopPanel" Spacing="16" Visibility="Collapsed">
+                <TextBlock Text="A little fish in your corner" FontSize="18" FontWeight="SemiBold" />
+                <CheckBox x:Name="WidgetVisibleCheckBox" Content="Show desktop widget" Checked="OnVisualOptionChanged" Unchecked="OnVisualOptionChanged" />
+                <TextBlock Text="Shows one usage line per enabled provider. Click a fish to open the full view. Hiding the widget keeps TokenFish in the tray." TextWrapping="Wrap" Foreground="{ThemeResource PopupTextSecondaryBrush}" />
+                <CheckBox x:Name="WidgetOnTopCheckBox" Content="Always on top" Checked="OnVisualOptionChanged" Unchecked="OnVisualOptionChanged" />
+                <TextBlock Text="Keep the widget above other applications when you want it in view." TextWrapping="Wrap" Foreground="{ThemeResource PopupTextSecondaryBrush}" />
+                <ComboBox x:Name="WidgetCornerComboBox" Header="Corner" HorizontalAlignment="Stretch" SelectionChanged="OnVisualSelectionChanged">
+                    <ComboBoxItem Content="Bottom right" Tag="BottomRight" />
+                    <ComboBoxItem Content="Bottom left" Tag="BottomLeft" />
+                    <ComboBoxItem Content="Top right" Tag="TopRight" />
+                    <ComboBoxItem Content="Top left" Tag="TopLeft" />
+                </ComboBox>
+                <TextBlock Text="Drag the handle to move between displays. Settings and the full view open beside the surface you used." TextWrapping="Wrap" Foreground="{ThemeResource PopupTextSecondaryBrush}" />
+            </StackPanel>
+            <StackPanel x:Name="AppearancePanel" Spacing="16" Visibility="Collapsed">
+                <TextBlock Text="One look across TokenFish" FontSize="18" FontWeight="SemiBold" />
+                <ComboBox x:Name="ThemeComboBox" Header="Appearance" HorizontalAlignment="Stretch" SelectionChanged="OnVisualSelectionChanged">
+                    <ComboBoxItem Content="System" Tag="System" />
+                    <ComboBoxItem Content="Light" Tag="Light" />
+                    <ComboBoxItem Content="Dark" Tag="Dark" />
+                </ComboBox>
+                <TextBlock Text="Applies immediately to the widget, usage view, and Settings. Windows high contrast takes priority." TextWrapping="Wrap" Foreground="{ThemeResource PopupTextSecondaryBrush}" />
+                <TextBlock x:Name="VersionTextBlock" Foreground="{ThemeResource PopupTextSecondaryBrush}" />
+            </StackPanel>
+            </Grid>
         </ScrollViewer>
 
         <Grid Grid.Row="2" ColumnSpacing="8">
@@ -274,6 +301,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
+            <TextBlock x:Name="VisualStatusTextBlock" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" VerticalAlignment="Center" />
 
             <Button
                 x:Name="CloseButton"

@@ -8,8 +8,8 @@ public sealed class TrayPopupDisplayStateAdapter
 {
     private static readonly ProviderKind[] ProviderOrder =
     [
-        ProviderKind.Claude,
-        ProviderKind.Codex
+        ProviderKind.Codex,
+        ProviderKind.Claude
     ];
 
     private readonly TimeProvider _timeProvider;
@@ -105,7 +105,9 @@ public sealed class TrayPopupDisplayStateAdapter
                 ? null
                 : $"{GetProviderName(provider)} did not report usage data.",
             CreateFooterText(provider, snapshot, state.EffectiveFreshness),
-            state.EffectiveFreshness == DataFreshness.Stale);
+            state.EffectiveFreshness == DataFreshness.Stale,
+            snapshot.DailyActivity.Where(day=>day.Date>=DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime).AddDays(-6) &&
+                day.Date<=DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime)).OrderBy(day=>day.Date).ToArray());
     }
 
     private IReadOnlyList<PopupQuotaWindowDisplayState> CreateQuotaWindows(
@@ -114,11 +116,6 @@ public sealed class TrayPopupDisplayStateAdapter
     {
         var windows = snapshot.QuotaWindows
             .Where(window => window.IsAvailable)
-            .Where(window => provider != ProviderKind.Claude ||
-                string.Equals(
-                    window.WindowId,
-                    "claude:status-line:five-hour",
-                    StringComparison.Ordinal))
             .ToArray();
         var displayWindows = new List<PopupQuotaWindowDisplayState>(windows.Length);
 
@@ -219,9 +216,15 @@ public sealed class TrayPopupDisplayStateAdapter
 
     private PopupActivityDisplayState CreateActivityRow(NormalizedActivityMetric metric)
     {
-        var label = metric.Unit == UsageActivityUnit.Tokens ? "Tokens used" : "Activity";
+        var label = metric.MetricId.StartsWith("codex:summary:",StringComparison.Ordinal) ? metric.DisplayLabel ?? "Activity"
+            : metric.Unit == UsageActivityUnit.Tokens ? "Tokens used" : "Activity";
         var intervalText = CreateActivityIntervalText(metric);
-        var valueText = FormatCompactNumber(metric.Value!.Value);
+        var valueText = metric.Unit switch
+        {
+            UsageActivityUnit.Days => $"{metric.Value} days",
+            UsageActivityUnit.Seconds => metric.Value>=60 ? $"{metric.Value/60}m {metric.Value%60}s" : $"{metric.Value}s",
+            _ => FormatCompactNumber(metric.Value!.Value)
+        };
         var automationName = CreateActivityAutomationName(label, metric, intervalText);
 
         return new PopupActivityDisplayState(
@@ -252,9 +255,13 @@ public sealed class TrayPopupDisplayStateAdapter
         _ = intervalText;
         var fullValue = metric.Value!.Value.ToString("N0", _culture);
         var interval = CreateActivityAccessibilityInterval(metric);
-        var valueText = metric.Unit == UsageActivityUnit.Tokens
-            ? $"{fullValue} tokens used"
-            : $"{fullValue} {label.ToLowerInvariant()}";
+        var valueText = metric.Unit switch
+        {
+            UsageActivityUnit.Tokens => $"{fullValue} tokens used",
+            UsageActivityUnit.Days => $"{label}: {fullValue} days",
+            UsageActivityUnit.Seconds => $"{label}: {fullValue} seconds",
+            _ => $"{fullValue} {label.ToLowerInvariant()}"
+        };
 
         return interval is null
             ? valueText

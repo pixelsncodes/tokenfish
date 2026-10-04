@@ -9,11 +9,16 @@ internal sealed class MainWindowPopupShell : IPopupShell
 {
     private readonly MainWindow _window;
     private readonly NativeNotificationAreaIcon _icon;
+    private readonly Func<Windows.Graphics.RectInt32?> _getAnchor;
+    private readonly Func<bool> _isRelatedWindowForeground;
 
-    public MainWindowPopupShell(MainWindow window, NativeNotificationAreaIcon icon)
+    public MainWindowPopupShell(MainWindow window, NativeNotificationAreaIcon icon,
+        Func<Windows.Graphics.RectInt32?>? getAnchor = null, Func<bool>? isRelatedWindowForeground = null)
     {
         _window = window;
         _icon = icon;
+        _getAnchor = getAnchor ?? (()=>null);
+        _isRelatedWindowForeground = isRelatedWindowForeground ?? (()=>false);
         _window.PopupActivated += OnPopupActivated;
         _window.PopupDeactivated += OnPopupDeactivated;
         _window.PopupCloseRequested += OnPopupCloseRequested;
@@ -22,7 +27,7 @@ internal sealed class MainWindowPopupShell : IPopupShell
 
     public bool IsVisible { get; private set; }
 
-    public bool IsForeground => PopupWindowPlacement.IsForeground(_window);
+    public bool IsForeground => PopupWindowPlacement.IsForeground(_window) || _isRelatedWindowForeground();
 
     public event Action? Activated;
 
@@ -34,14 +39,15 @@ internal sealed class MainWindowPopupShell : IPopupShell
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var iconRectangle = _icon.TryGetIconRectangle(out var rectangle)
+        var iconRectangle = _getAnchor() ?? (_icon.TryGetIconRectangle(out var rectangle)
             ? rectangle
-            : (Windows.Graphics.RectInt32?)null;
+            : (Windows.Graphics.RectInt32?)null);
         PositionBesideIcon(iconRectangle);
         _window.AppWindow.Show();
         _ = PopupWindowPlacement.RemoveNativeFrameAfterShowing(_window);
         PositionBesideIcon(iconRectangle);
         IsVisible = true;
+        _window.SetSurfaceVisible(true);
         PopupWindowPlacement.BringToForeground(_window);
         return Task.CompletedTask;
     }
@@ -50,6 +56,7 @@ internal sealed class MainWindowPopupShell : IPopupShell
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        _window.SetSurfaceVisible(false);
         _window.AppWindow.Hide();
         IsVisible = false;
         return Task.CompletedTask;
@@ -68,9 +75,9 @@ internal sealed class MainWindowPopupShell : IPopupShell
             return;
         }
 
-        var iconRectangle = _icon.TryGetIconRectangle(out var rectangle)
+        var iconRectangle = _getAnchor() ?? (_icon.TryGetIconRectangle(out var rectangle)
             ? rectangle
-            : (Windows.Graphics.RectInt32?)null;
+            : (Windows.Graphics.RectInt32?)null);
         PositionBesideIcon(iconRectangle);
     }
 

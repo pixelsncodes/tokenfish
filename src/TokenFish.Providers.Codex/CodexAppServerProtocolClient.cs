@@ -257,10 +257,13 @@ public sealed class CodexAppServerProtocolClient : ICodexAppServerProtocolClient
                     "Codex app server response ID did not match the expected request ID.");
             }
 
-            if (root.TryGetProperty("error", out _))
+            if (root.TryGetProperty("error", out var error))
             {
+                var unsupported = error.ValueKind == JsonValueKind.Object &&
+                    error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.Number && code.TryGetInt64(out var value) && value == -32601;
                 throw new CodexAppServerProtocolException(
-                    "Codex app server returned an error response.");
+                    unsupported ? "This Codex runtime does not support the requested statistic." : "Codex rejected the request. Check sign-in and runtime availability.",
+                    kind: unsupported ? CodexProtocolErrorKind.UnsupportedMethod : CodexProtocolErrorKind.RequestRejected);
             }
 
             if (!root.TryGetProperty("result", out _))

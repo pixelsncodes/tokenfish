@@ -12,6 +12,13 @@ public partial class App : Application
     private readonly ApplicationInstanceStartupCoordinator _startupCoordinator;
     private Window? _window;
     private MainWindow? _popupWindow;
+    private DesktopWidgetWindow? _desktopWidget;
+    private SettingsWindow? _settingsWindow;
+    private Windows.Graphics.RectInt32? _settingsAnchor;
+    private Windows.Graphics.RectInt32? _popupAnchor;
+    private AppSettings? _visualSettings;
+    private readonly SemaphoreSlim _visualSettingsGate = new(1,1);
+    private DispatcherTimer? _widgetTimer;
     private readonly LocalAppSettingsStore _settingsStore;
     private readonly TokenFishApplicationRuntimeHost _runtimeHost;
     private readonly ManualRefreshCommand _manualRefreshCommand;
@@ -38,7 +45,8 @@ public partial class App : Application
 
         _startupCoordinator = startupCoordinator;
         InitializeComponent();
-        _settingsStore = new LocalAppSettingsStore();
+        var settingsOverride=Environment.GetEnvironmentVariable("TOKENFISH_SETTINGS_PATH");
+        _settingsStore = string.IsNullOrWhiteSpace(settingsOverride) ? new LocalAppSettingsStore() : new LocalAppSettingsStore(settingsOverride);
         _runtimeHost = new TokenFishApplicationRuntimeHost(
             _settingsStore,
             GetClientVersion());
@@ -50,12 +58,23 @@ public partial class App : Application
         _popupWindow = new MainWindow();
         _popupWindow.RefreshRequested += OnPopupRefreshRequested;
         _popupWindow.SettingsRequested += OnPopupSettingsRequested;
+        _popupWindow.WidgetRequested += OnToggleWidgetRequested;
         PopupWindowPlacement.Configure(_popupWindow);
         _window = _popupWindow;
         _window.Closed += OnWindowClosed;
 
         var icon = new NativeNotificationAreaIcon(_window, _window.DispatcherQueue);
-        var popupShell = new MainWindowPopupShell(_popupWindow, icon);
+        _desktopWidget = new DesktopWidgetWindow();
+        _desktopWidget.OpenRequested += ()=> { _popupAnchor=_desktopWidget.Rectangle; _= _popupController?.ShowAsync(CancellationToken.None); };
+        _desktopWidget.SettingsRequested += ()=> { _settingsAnchor=_desktopWidget.Rectangle; _settingsWindowCoordinator?.Open(); };
+        _desktopWidget.HideRequested += OnToggleWidgetRequested;
+        _desktopWidget.PlacementChanged += (corner,x,y)=>_ = ChangeVisualSettingsAsync(settings=>settings with {DesktopWidgetCorner=corner,DesktopWidgetMonitorX=x,DesktopWidgetMonitorY=y});
+        _widgetTimer=new DispatcherTimer {Interval=TimeSpan.FromSeconds(1)};
+        _widgetTimer.Tick+=(_,_)=> { if(_desktopWidget.IsVisible) _=RefreshPopupStateAsync(CancellationToken.None); };
+        _widgetTimer.Start();
+        var popupShell = new MainWindowPopupShell(_popupWindow, icon, ()=>_popupAnchor,
+            ()=> (_settingsWindow is not null && PopupWindowPlacement.IsForeground(_settingsWindow)) ||
+                (_desktopWidget.IsVisible && PopupWindowPlacement.IsForeground(_desktopWidget)));
         var popupTimer = new DispatcherPopupUpdateTimer(_window.DispatcherQueue);
         var popupActionQueue = new DispatcherPopupActionQueue(_window.DispatcherQueue);
         _settingsWindowCoordinator = new SettingsWindowCoordinator(
@@ -69,7 +88,7 @@ public partial class App : Application
             icon,
             _runtimeHost,
             _manualRefreshCommand,
-            () => _popupController?.ToggleAsync(CancellationToken.None) ?? Task.CompletedTask,
+            () => { _popupAnchor=null; return _popupController?.ToggleAsync(CancellationToken.None) ?? Task.CompletedTask; },
             OpenSettingsAsync,
             ExitAsync);
         _notificationAreaController.Initialize();
@@ -94,6 +113,9 @@ public partial class App : Application
     {
         var settings = await _settingsStore.LoadAsync(CancellationToken.None);
         _startupSettings = settings;
+        _visualSettings = settings;
+        _popupWindow?.ApplySettings(settings);
+        _desktopWidget?.ApplySettings(settings);
 
         if (settings.IsOnboardingCompleted)
         {
@@ -124,7 +146,8 @@ public partial class App : Application
         }
 
         var setup = ClaudeBridgeSetupGuide.Create(AppContext.BaseDirectory);
-        var window = new OnboardingWindow(new OnboardingFlowController(settings), setup.SettingsSnippet);
+        var window = new OnboardingWindow(new OnboardingFlowController(settings), setup.SettingsSnippet,
+            claudeWslSnippet: setup.WslSettingsSnippet);
         _onboardingWindow = window;
         window.Deferred += OnOnboardingDeferred;
         window.VerificationRequested += OnOnboardingVerificationRequested;
@@ -143,7 +166,8 @@ public partial class App : Application
         try
         {
             await _settingsStore.SaveAsync(settings, CancellationToken.None);
-            await StartRuntimeAsync();
+            await _runtimeHost.ApplySettingsAsync(CancellationToken.None);
+            await RefreshPopupStateAsync(CancellationToken.None);
             if (_runtimeHost.Services is { } services && _onboardingWindow is not null)
             {
                 _onboardingWindow.ShowVerification(
@@ -192,12 +216,18 @@ public partial class App : Application
     {
         await _runtimeHost.StartAsync(CancellationToken.None);
         await RefreshPopupStateAsync(CancellationToken.None);
+        if(Environment.GetCommandLineArgs().Contains("--show",StringComparer.OrdinalIgnoreCase))
+            await (_popupController?.ShowAsync(CancellationToken.None) ?? Task.CompletedTask);
+        if(Environment.GetCommandLineArgs().Contains("--settings",StringComparer.OrdinalIgnoreCase))
+            await OpenSettingsAsync();
     }
 
     private async void OnWindowClosed(object sender, WindowEventArgs args)
     {
         if (!_exitRequested)
         {
+            _widgetTimer?.Stop();
+            _desktopWidget?.Shutdown();
             _relaunchActivationController?.Dispose();
             _popupController?.Dispose();
             _notificationAreaController?.Dispose();
@@ -230,12 +260,17 @@ public partial class App : Application
             _manualRefreshCommand.State,
             snapshotStore);
         _popupWindow.UpdateState(state);
+        var appearance = _visualSettings ?? settings;
+        _popupWindow.ApplySettings(appearance);
+        _desktopWidget?.ApplySettings(appearance);
+        _desktopWidget?.UpdateState(state);
 
         return Task.CompletedTask;
     }
 
     private Task OpenSettingsAsync()
     {
+        _settingsAnchor=null;
         _settingsWindowCoordinator?.Open();
         return Task.CompletedTask;
     }
@@ -249,9 +284,15 @@ public partial class App : Application
             editor,
             readinessProvider,
             _runtimeHost.CurrentSettings);
-        return new SettingsWindowShell(new SettingsWindow(
+        var window = new SettingsWindow(
             presenter,
-            () => icon.TryGetIconRectangle(out var rectangle) ? rectangle : null));
+            () => _settingsAnchor ?? (icon.TryGetIconRectangle(out var rectangle) ? rectangle : null),
+            _settingsStore,
+            _visualSettingsGate);
+        _settingsWindow=window;
+        window.AppearanceChanged += OnAppearanceSaved;
+        window.Closed+=(_,_)=> { window.AppearanceChanged-=OnAppearanceSaved; if(ReferenceEquals(_settingsWindow,window)) _settingsWindow=null; };
+        return new SettingsWindowShell(window);
     }
 
     private void OnRuntimeStatusChanged(ApplicationRuntimeStatus status)
@@ -284,7 +325,33 @@ public partial class App : Application
     private void OnPopupRefreshRequested() =>
         _ = _manualRefreshCommand.RequestAsync(CancellationToken.None);
 
-    private void OnPopupSettingsRequested() => _ = OpenSettingsAsync();
+    private void OnPopupSettingsRequested()
+    {
+        if(_popupWindow is not null) _settingsAnchor=new(_popupWindow.AppWindow.Position.X,_popupWindow.AppWindow.Position.Y,_popupWindow.AppWindow.Size.Width,_popupWindow.AppWindow.Size.Height);
+        _settingsWindowCoordinator?.Open();
+    }
+
+    private void OnToggleWidgetRequested()=>_ = ChangeVisualSettingsAsync(settings=>settings with {IsDesktopWidgetVisible=!settings.IsDesktopWidgetVisible});
+    private async Task ChangeVisualSettingsAsync(Func<AppSettings,AppSettings> change)
+    {
+        await _visualSettingsGate.WaitAsync();
+        try
+        {
+            var settings=change(await _settingsStore.LoadAsync(CancellationToken.None));
+            await _settingsStore.SaveAsync(settings,CancellationToken.None);
+            OnAppearanceSaved(settings);
+        }
+        catch {_runtimeHost.ReportShellFault();}
+        finally {_visualSettingsGate.Release();}
+    }
+    private void OnAppearanceSaved(AppSettings settings)
+    {
+        _visualSettings=settings;
+        _settingsWindow?.SetVisualControls(settings);
+        _popupWindow?.ApplySettings(settings);
+        _desktopWidget?.ApplySettings(settings);
+        _=RefreshPopupStateAsync(CancellationToken.None);
+    }
 
     private async Task ExitAsync()
     {
@@ -311,6 +378,8 @@ public partial class App : Application
         }
 
         _exitRequested = true;
+        _widgetTimer?.Stop();
+        _desktopWidget?.Shutdown();
         _relaunchActivationController?.BeginShutdown();
         _settingsWindowCoordinator?.Shutdown();
         _window.AppWindow.Hide();

@@ -5,6 +5,28 @@ namespace TokenFish.Infrastructure.Tests;
 
 public sealed class OnboardingFlowControllerTests
 {
+    [Theory]
+    [InlineData(ProviderSelectionMode.CodexOnly,5)]
+    [InlineData(ProviderSelectionMode.ClaudeOnly,5)]
+    [InlineData(ProviderSelectionMode.Both,6)]
+    public void ProgressCountsOnlyTheSelectedRoute(ProviderSelectionMode mode,int expectedCount)
+    {
+        var flow=new OnboardingFlowController(new AppSettings {ProviderSelectionMode=mode});
+        var numbers=new List<int> {flow.StepNumber};
+        while(flow.Step!=OnboardingStep.Finish) {Assert.True(flow.Continue());numbers.Add(flow.StepNumber);}
+        Assert.Equal(expectedCount,flow.TotalSteps);
+        Assert.Equal(Enumerable.Range(1,expectedCount),numbers);
+        flow.Back();Assert.Equal(expectedCount-1,flow.StepNumber);
+    }
+
+    [Fact]
+    public void SavedRuntimeAndDistributionAreRestored()
+    {
+        var flow=new OnboardingFlowController(new AppSettings {ProviderSelectionMode=ProviderSelectionMode.Both,CodexRuntimeMode=CodexRuntimeMode.Wsl,CodexWslDistributionName="Ubuntu"});
+        Assert.Equal(CodexRuntimeMode.Wsl,flow.RuntimeMode);
+        Assert.Equal("Ubuntu",flow.WslDistributionName);
+        Assert.True(flow.IsClaudeSelected);Assert.True(flow.IsCodexSelected);
+    }
     [Fact]
     public void BeginsAtWelcome() => Assert.Equal(OnboardingStep.Welcome, Create().Step);
 

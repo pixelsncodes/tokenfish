@@ -104,6 +104,31 @@ public readonly record struct SettingsWindowLayout(
 
 public static class SettingsWindowPositionCalculator
 {
+    public static SettingsWindowPlacement CalculateBeside(
+        SettingsMonitorWorkArea workArea,
+        SettingsWindowPhysicalSize windowSize,
+        SettingsWindowPhysicalRect anchor,
+        int gapPhysicalPixels = 12)
+    {
+        ValidateWindowSize(windowSize);
+        ValidateWorkArea(workArea);
+        ValidateRectangle(anchor);
+        ArgumentOutOfRangeException.ThrowIfNegative(gapPhysicalPixels);
+        var right = anchor.Right + gapPhysicalPixels;
+        var left = anchor.X - windowSize.Width - gapPhysicalPixels;
+        var above = anchor.Y - windowSize.Height - gapPhysicalPixels;
+        var below = anchor.Bottom + gapPhysicalPixels;
+        SettingsWindowPhysicalRect rectangle;
+        if (right + windowSize.Width <= workArea.Right)
+            rectangle = new(right, anchor.Bottom - windowSize.Height, windowSize.Width, windowSize.Height);
+        else if (left >= workArea.X)
+            rectangle = new(left, anchor.Bottom - windowSize.Height, windowSize.Width, windowSize.Height);
+        else
+            rectangle = new(anchor.Right - windowSize.Width,
+                above >= workArea.Y ? above : below, windowSize.Width, windowSize.Height);
+        return new(ClampToWorkArea(rectangle, workArea), ReusedLastPosition: false);
+    }
+
     public static SettingsWindowPlacement Calculate(
         IReadOnlyList<SettingsMonitorWorkArea> workAreas,
         SettingsWindowPhysicalSize windowSize,

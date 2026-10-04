@@ -8,6 +8,18 @@ namespace TokenFish.Infrastructure.Tests;
 public sealed class TrayPopupDisplayStateAdapterTests
 {
     private static readonly CultureInfo TestCulture = CultureInfo.GetCultureInfo("en-US");
+    [Theory]
+    [InlineData(UsageActivityUnit.Days, "Current streak", "Current streak: 28 days")]
+    [InlineData(UsageActivityUnit.Seconds, "Longest turn", "Longest turn: 28 seconds")]
+    public void SummaryAccessibilityNamesIncludeReportedUnits(UsageActivityUnit unit, string label, string expected)
+    {
+        var metric = new NormalizedActivityMetric(ProviderKind.Codex, "codex:summary:test", label,
+            UsageMetricLabelOrigin.ProviderSupplied, 28, unit, null, null,
+            UsageMetricAvailability.Available, DateTimeOffset.UtcNow, DataAuthority.LocalProviderReported,
+            DataFreshness.Live, "account/usage/read");
+        var provider = SingleProvider(CreateSnapshot(ProviderKind.Codex, activityMetrics: [metric]));
+        Assert.Equal(expected, Assert.Single(provider.ActivityRows).AutomationName);
+    }
     private static readonly TimeZoneInfo TestTimeZone = TimeZoneInfo.CreateCustomTimeZone(
         "TokenFishTestTime",
         TimeSpan.FromHours(-7),
@@ -51,11 +63,11 @@ public sealed class TrayPopupDisplayStateAdapterTests
             new AppSettings { ProviderSelectionMode = ProviderSelectionMode.Both },
             [CreateSnapshot(ProviderKind.Codex), CreateSnapshot(ProviderKind.Claude)]);
 
-        Assert.Equal([ProviderKind.Claude, ProviderKind.Codex], state.Providers.Select(provider => provider.Provider));
+        Assert.Equal([ProviderKind.Codex, ProviderKind.Claude], state.Providers.Select(provider => provider.Provider));
     }
 
     [Fact]
-    public void ClaudePopupDisplaysOnlyFiveHourQuotaWhileSnapshotRetainsSevenDayQuota()
+    public void ClaudePopupDisplaysBothReportedQuotaWindows()
     {
         var snapshot = CreateSnapshot(
             ProviderKind.Claude,
@@ -74,8 +86,9 @@ public sealed class TrayPopupDisplayStateAdapterTests
         Assert.Equal(2, snapshot.QuotaWindows.Count);
         Assert.Contains(snapshot.QuotaWindows, window => window.WindowId == "claude:status-line:seven-day");
         Assert.Equal("Claude", provider.ProviderName);
-        Assert.Equal(["5h usage"], provider.QuotaWindows.Select(window => window.Label));
-        Assert.Equal(["24% used"], provider.QuotaWindows.Select(window => window.PercentageText));
+        Assert.Equal(["5h usage","7d usage"], provider.QuotaWindows.Select(window => window.Label));
+        Assert.Equal(["24% used","41% used"], provider.QuotaWindows.Select(window => window.PercentageText));
+        Assert.Equal(["76% left","59% left"],provider.QuotaWindows.Select(window=>window.RemainingText));
         Assert.Empty(provider.ActivityRows);
     }
 

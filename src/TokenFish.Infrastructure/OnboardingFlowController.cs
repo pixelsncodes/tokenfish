@@ -22,6 +22,16 @@ public sealed class OnboardingFlowController
     public string WslDistributionName { get; private set; }
     public bool IsWslDistributionEnabled => IsCodexSelected && RuntimeMode != CodexRuntimeMode.NativeWindows;
     public string? ValidationMessage { get; private set; }
+    public int TotalSteps => 4 + (IsCodexSelected ? 1 : 0) + (IsClaudeSelected ? 1 : 0);
+    public int StepNumber => Step switch
+    {
+        OnboardingStep.Welcome => 1,
+        OnboardingStep.ProviderSelection => 2,
+        OnboardingStep.CodexRuntime => 3,
+        OnboardingStep.ClaudeBridge => IsCodexSelected ? 4 : 3,
+        OnboardingStep.Verification => TotalSteps - 1,
+        _ => TotalSteps
+    };
 
     public void Select(ProviderSelectionMode mode)
     {

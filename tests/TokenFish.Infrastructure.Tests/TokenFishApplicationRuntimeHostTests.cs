@@ -8,6 +8,45 @@ namespace TokenFish.Infrastructure.Tests;
 public sealed class TokenFishApplicationRuntimeHostTests
 {
     [Fact]
+    public async Task EditedSetupStopsOldServicesBeforeStartingNewConfiguration()
+    {
+        var saved=new AppSettings();
+        var events=new List<string>();
+        var store=new RecordingSettingsStore {LoadAsyncCallback=_=>Task.FromResult(saved)};
+        var services=new List<RecordingRuntimeServices>();
+        await using var host=CreateHost(store,(settings,_)=>
+        {
+            events.Add("start:"+settings.ProviderSelectionMode);
+            var next=new RecordingRuntimeServices(new RecordingRefreshLifecycle {OnStop=()=>events.Add("stop")}) {OnDispose=()=>events.Add("dispose")};
+            services.Add(next);return next;
+        });
+        await host.StartAsync(CancellationToken.None);
+        saved=saved with {ProviderSelectionMode=ProviderSelectionMode.Both,CodexRuntimeMode=CodexRuntimeMode.NativeWindows};
+        await Task.WhenAll(host.ApplySettingsAsync(CancellationToken.None),host.ApplySettingsAsync(CancellationToken.None));
+        Assert.Equal(["start:CodexOnly","stop","dispose","start:Both"],events);
+        Assert.Equal(2,services.Count);
+        Assert.Same(services[1],host.Services);
+        Assert.Equal(CodexRuntimeMode.NativeWindows,host.CurrentSettings!.CodexRuntimeMode);
+        Assert.Equal(ApplicationRuntimeStatus.Running,host.Status);
+        await services[0].ProviderRefreshLifecycle.DisposeAsync();
+        Assert.Equal(ApplicationRuntimeStatus.Running,host.Status);
+    }
+
+    [Fact]
+    public async Task AppearanceChangesDoNotRestartProviderServices()
+    {
+        var saved=new AppSettings();
+        var store=new RecordingSettingsStore {LoadAsyncCallback=_=>Task.FromResult(saved)};
+        var count=0;
+        await using var host=CreateHost(store,(_,_)=>{count++;return new RecordingRuntimeServices(new RecordingRefreshLifecycle());});
+        await host.StartAsync(CancellationToken.None);
+        saved=saved with {ThemeMode=ThemeMode.Dark,IsDesktopWidgetVisible=true};
+        await host.ApplySettingsAsync(CancellationToken.None);
+        Assert.Equal(1,count);
+        Assert.Equal(saved,host.CurrentSettings);
+    }
+
+    [Fact]
     public async Task SettingsAreLoadedBeforeServiceConstruction()
     {
         var settingsLoaded = false;

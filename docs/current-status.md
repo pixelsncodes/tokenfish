@@ -1,4 +1,10 @@
-# TokenFish Local MVP Status
+# TokenFish Status
+
+## Current portable candidate
+
+The approved redesign is implemented as **0.2.0-beta.1**: animated fish/pellet rails, both providers, optional persisted corner widget, adjacent Settings placement, live System/Light/Dark appearance, corrected setup routes, bounded Codex requests and recovery, Claude weekly quota, and optional Codex activity summaries. The latest x64 build is clean and all **825 tests pass**. Local portable packaging and a Windows CI workflow are available. See [the current validation record](releases/0.2.0-beta.1.md) for desktop evidence and public-release gates.
+
+This candidate has not been pushed or published. It is unsigned, with no installer. License selection and the remaining manual/clean-machine checks precede public release. The record below describes the earlier MVP, including historical checks; it does not establish a visual pass for the new widget or redesign.
 
 ## Completion
 
@@ -37,6 +43,6 @@ The following manual states were not forced because no safe reversible method wa
 - Moving a published App directory requires updating Claude Code's configured bridge command. Automatic Claude configuration, backup, merge, and rollback are intentionally unsupported.
 - Legacy compatibility cleanup remains deferred. Do not remove or reinterpret `UsageWindow`, `UsageWindowResetAt`, `SessionTokens`, or `WeeklyTokens`.
 
-## Handoff
+## Historical MVP handoff
 
 No release has been created and nothing has been pushed. The recommended next phase is documentation-independent release work only when explicitly requested: installer/release design or integration of a real branded icon source. Otherwise, no further engineering is required for the local MVP.

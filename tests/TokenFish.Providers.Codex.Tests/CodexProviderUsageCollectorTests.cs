@@ -41,7 +41,7 @@ public sealed class CodexProviderUsageCollectorTests
     }
 
     [Fact]
-    public async Task CollectPassesSameCancellationTokenToBothReads()
+    public async Task AccountUsageReceivesACancellableDeadlineWhileQuotaUsesCallerToken()
     {
         var protocolClient = new FakeCodexAppServerProtocolClient();
         var collector = CreateCollector(protocolClient);
@@ -50,7 +50,7 @@ public sealed class CodexProviderUsageCollectorTests
         await collector.CollectAsync(cancellation.Token);
 
         Assert.Equal(cancellation.Token, protocolClient.RateLimitsCancellationToken);
-        Assert.Equal(cancellation.Token, protocolClient.AccountUsageCancellationToken);
+        Assert.True(protocolClient.AccountUsageCancellationToken.CanBeCanceled);
     }
 
     [Fact]

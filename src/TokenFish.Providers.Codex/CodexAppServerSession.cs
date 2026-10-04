@@ -10,22 +10,27 @@ public sealed class CodexAppServerSession : ICodexAppServerSession
     private readonly Task _stderrDrainTask;
     private readonly CodexProviderUsageCollector _collector;
     private readonly TimeSpan _shutdownTimeout;
+    private readonly TimeSpan _collectionTimeout;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private bool _initialized;
     private bool _disposeStarted;
     private bool _disposed;
 
+    public bool IsHealthy => !_disposed && !_process.HasExited && !_collector.RequiresSessionRecovery;
+
     private CodexAppServerSession(
         ICodexAppServerProcess process,
         Task stderrDrainTask,
         CodexProviderUsageCollector collector,
-        TimeSpan shutdownTimeout)
+        TimeSpan shutdownTimeout,
+        TimeSpan collectionTimeout)
     {
         _process = process;
         _stderrDrainTask = stderrDrainTask;
         _collector = collector;
         _shutdownTimeout = shutdownTimeout;
+        _collectionTimeout = collectionTimeout;
         _initialized = true;
     }
 
@@ -62,7 +67,9 @@ public sealed class CodexAppServerSession : ICodexAppServerSession
         TimeProvider? timeProvider,
         ICodexAppServerProcessFactory processFactory,
         TimeSpan shutdownTimeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? startupTimeout = null,
+        TimeSpan? collectionTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(launchCommand);
         ArgumentException.ThrowIfNullOrWhiteSpace(clientVersion);
@@ -92,7 +99,16 @@ public sealed class CodexAppServerSession : ICodexAppServerSession
                 process.StandardInput,
                 clientVersion);
 
-            await protocolClient.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            using var startupDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            startupDeadline.CancelAfter(startupTimeout ?? TimeSpan.FromSeconds(15));
+            try
+            {
+                await protocolClient.InitializeAsync(startupDeadline.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new CodexAppServerSessionException("Codex startup timed out. Check the runtime and try refreshing again.");
+            }
 
             var snapshotFactory = new CodexUsageSnapshotFactory();
             var collector = new CodexProviderUsageCollector(
@@ -104,7 +120,8 @@ public sealed class CodexAppServerSession : ICodexAppServerSession
                 process,
                 stderrDrainTask,
                 collector,
-                shutdownTimeout);
+                shutdownTimeout,
+                collectionTimeout ?? TimeSpan.FromSeconds(20));
         }
         catch
         {
@@ -134,7 +151,16 @@ public sealed class CodexAppServerSession : ICodexAppServerSession
                 throw new ObjectDisposedException(nameof(CodexAppServerSession));
             }
 
-            return await _collector.CollectAsync(cancellationToken).ConfigureAwait(false);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(_collectionTimeout);
+            try
+            {
+                return await _collector.CollectAsync(deadline.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new CodexAppServerSessionException("Codex refresh timed out. Try refreshing again.");
+            }
         }
         finally
         {

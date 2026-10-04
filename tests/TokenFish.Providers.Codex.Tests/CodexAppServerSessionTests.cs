@@ -6,6 +6,26 @@ namespace TokenFish.Providers.Codex.Tests;
 
 public sealed class CodexAppServerSessionTests
 {
+    [Fact]
+    public async Task StalledInitializationTimesOutAndDisposesOwnedProcess()
+    {
+        var process=new FakeCodexAppServerProcess([],new PrefixThenStallReader(""));
+        await Assert.ThrowsAsync<CodexAppServerSessionException>(()=>CodexAppServerSession.StartAsync(
+            CodexAppServerLaunchCommand.CreateNative("codex.exe"),"1.0.0",null,new FakeCodexAppServerProcessFactory(process),
+            TimeSpan.FromMilliseconds(10),CancellationToken.None,startupTimeout:TimeSpan.FromMilliseconds(25)));
+        Assert.True(process.HasExited);Assert.Equal(1,process.DisposeCallCount);
+    }
+
+    [Fact]
+    public async Task StalledQuotaReadTimesOutAndRemainsDisposable()
+    {
+        var process=new FakeCodexAppServerProcess([],new PrefixThenStallReader(InitializeResponse(1)+"\n"));
+        await using var session=await CodexAppServerSession.StartAsync(CodexAppServerLaunchCommand.CreateNative("codex.exe"),"1.0.0",null,
+            new FakeCodexAppServerProcessFactory(process),TimeSpan.FromMilliseconds(10),CancellationToken.None,collectionTimeout:TimeSpan.FromMilliseconds(25));
+        await Assert.ThrowsAsync<CodexAppServerSessionException>(()=>session.CollectAsync(CancellationToken.None));
+        await session.DisposeAsync();Assert.True(process.HasExited);
+    }
+
     private static readonly DateTimeOffset CapturedAt =
         new(2026, 7, 12, 15, 30, 0, TimeSpan.Zero);
 
@@ -181,19 +201,17 @@ public sealed class CodexAppServerSessionTests
     }
 
     [Fact]
-    public async Task NoPartialResultIsFabricatedAfterProtocolFailure()
+    public async Task ReportedQuotaSurvivesFailedOptionalActivityAndSessionNeedsRecovery()
     {
         var process = CreateProcess(
             InitializeResponse(1),
             RateLimitsResponse(2));
         await using var session = await StartSessionAsync(
             new FakeCodexAppServerProcessFactory(process));
-        ProviderUsageSnapshot? snapshot = null;
-
-        await Assert.ThrowsAsync<CodexAppServerProtocolException>(async () =>
-            snapshot = await session.CollectAsync(CancellationToken.None));
-
-        Assert.Null(snapshot);
+        var snapshot = await session.CollectAsync(CancellationToken.None);
+        Assert.True(snapshot.UsageWindow.IsAvailable);
+        Assert.False(snapshot.WeeklyTokens.IsAvailable);
+        Assert.False(session.IsHealthy);
     }
 
     [Fact]
@@ -352,7 +370,7 @@ public sealed class CodexAppServerSessionTests
 
         private bool _hasExited;
 
-        public FakeCodexAppServerProcess(IReadOnlyList<string> stdoutLines)
+        public FakeCodexAppServerProcess(IReadOnlyList<string> stdoutLines,TextReader? output=null)
         {
             StandardInputWriter = new RecordingTextWriter(() =>
             {
@@ -361,7 +379,7 @@ public sealed class CodexAppServerSessionTests
                     MarkExited(0);
                 }
             });
-            StandardOutput = new StringReader(string.Join('\n', stdoutLines));
+            StandardOutput = output ?? new StringReader(string.Join('\n', stdoutLines));
             StandardErrorReader = new CountingTextReader();
         }
 
@@ -446,6 +464,17 @@ public sealed class CodexAppServerSessionTests
         {
             ReadCallCount++;
             return Task.FromResult(0);
+        }
+    }
+
+    private sealed class PrefixThenStallReader(string prefix):TextReader
+    {
+        private readonly StringReader _prefix=new(prefix);
+        public override async ValueTask<int> ReadAsync(Memory<char> buffer,CancellationToken cancellationToken=default)
+        {
+            var read=await _prefix.ReadAsync(buffer,cancellationToken);
+            if(read>0)return read;
+            await Task.Delay(Timeout.InfiniteTimeSpan,cancellationToken);return 0;
         }
     }
 

@@ -10,6 +10,7 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
     private readonly string _clientVersion;
     private readonly Func<AppSettings, string, IApplicationRuntimeServices> _createServices;
     private readonly object _sync = new();
+    private readonly SemaphoreSlim _reconfigurationGate = new(1, 1);
     private readonly CancellationTokenSource _shutdownCancellationTokenSource = new();
 
     private IApplicationRuntimeServices? _services;
@@ -168,6 +169,49 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
         }
     }
 
+    /// <summary>Applies saved setup choices without retaining the previous provider session.</summary>
+    public async Task ApplySettingsAsync(CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdownCancellationTokenSource.Token);
+        await _reconfigurationGate.WaitAsync(linked.Token).ConfigureAwait(false);
+        try
+        {
+            await StartAsync(linked.Token).ConfigureAwait(false);
+            var saved = await _settingsStore.LoadAsync(linked.Token).ConfigureAwait(false);
+            IApplicationRuntimeServices? previous;
+            lock (_sync)
+            {
+                if (_shutdownStarted) return;
+                if (_currentSettings is { } current &&
+                    current.ProviderSelectionMode == saved.ProviderSelectionMode &&
+                    current.CodexRuntimeMode == saved.CodexRuntimeMode &&
+                    current.CodexWslDistributionName == saved.CodexWslDistributionName && _services is not null)
+                {
+                    _currentSettings = saved;
+                    return;
+                }
+                previous = _services;
+                _services = null;
+                SetStatusUnderLock(ApplicationRuntimeStatus.Starting);
+            }
+            if (previous is not null)
+            {
+                previous.ProviderRefreshLifecycle.RefreshStatusChanged -= OnRefreshStatusChanged;
+                await previous.ProviderRefreshLifecycle.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                await previous.DisposeAsync().ConfigureAwait(false);
+            }
+            linked.Token.ThrowIfCancellationRequested();
+            Task startup;
+            lock (_sync)
+            {
+                if (_shutdownStarted) return;
+                startup = _startupTask = StartCoreAsync();
+            }
+            await startup.ConfigureAwait(false);
+        }
+        finally { _reconfigurationGate.Release(); }
+    }
+
     public Task StopAsync(CancellationToken cancellationToken)
     {
         lock (_sync)
@@ -223,7 +267,7 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
             SetRefreshStatus(lifecycle.RefreshStatus);
             var startTask = lifecycle.StartAsync(_shutdownCancellationTokenSource.Token);
             var completion = lifecycle.Completion;
-            _lifecycleCompletionObserver = ObserveLifecycleCompletionAsync(completion);
+            _lifecycleCompletionObserver = ObserveLifecycleCompletionAsync(completion, services);
 
             await startTask.ConfigureAwait(false);
 
@@ -258,7 +302,7 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
         }
     }
 
-    private async Task ObserveLifecycleCompletionAsync(Task completion)
+    private async Task ObserveLifecycleCompletionAsync(Task completion, IApplicationRuntimeServices owner)
     {
         try
         {
@@ -272,7 +316,7 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
         {
             lock (_sync)
             {
-                if (!_shutdownStarted)
+                if (!_shutdownStarted && ReferenceEquals(_services, owner))
                 {
                     SetStatusUnderLock(ApplicationRuntimeStatus.RefreshFaulted);
                 }
@@ -296,6 +340,11 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
                 SetStatusUnderLock(ApplicationRuntimeStatus.Stopping);
             }
 
+        }
+
+        await _reconfigurationGate.WaitAsync().ConfigureAwait(false);
+        lock (_sync)
+        {
             services = _services;
             startupTask = _startupTask;
             completionObserver = _lifecycleCompletionObserver;
@@ -337,6 +386,7 @@ public sealed class TokenFishApplicationRuntimeHost : IApplicationRuntimeHost, I
                 SetStatusUnderLock(ApplicationRuntimeStatus.ShutdownFaulted);
             }
         }
+        finally { _reconfigurationGate.Release(); }
     }
 
     private static async Task SuppressOwnedFaultAsync(Task task)

@@ -5,19 +5,19 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="TokenFish Setup">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <Grid x:Name="RootGrid" Padding="36" Background="#171A20" RowSpacing="18">
+        <Grid x:Name="RootGrid" Padding="36" Background="{ThemeResource TokenFishSurfaceBrush}" RowSpacing="18">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <StackPanel Spacing="6">
-                <TextBlock Text="TOKENFISH" Foreground="#F4EA2A" FontWeight="SemiBold" />
-                <TextBlock x:Name="StepTextBlock" Foreground="#B4C0D0" AutomationProperties.Name="Setup progress" />
+                <TextBlock Text="TOKENFISH" Foreground="{ThemeResource TokenFishBrandBrush}" FontWeight="SemiBold" />
+                <TextBlock x:Name="StepTextBlock" Foreground="{ThemeResource PopupTextSecondaryBrush}" AutomationProperties.Name="Setup progress" />
             </StackPanel>
             <StackPanel Grid.Row="1" Spacing="16">
-                <TextBlock x:Name="TitleTextBlock" FontSize="28" FontWeight="SemiBold" Foreground="#E7EDF6" />
-                <TextBlock x:Name="DescriptionTextBlock" TextWrapping="Wrap" Foreground="#E7EDF6" />
+                <TextBlock x:Name="TitleTextBlock" FontSize="28" FontWeight="SemiBold" Foreground="{ThemeResource PopupTextPrimaryBrush}" />
+                <TextBlock x:Name="DescriptionTextBlock" TextWrapping="Wrap" Foreground="{ThemeResource PopupTextPrimaryBrush}" />
                 <StackPanel x:Name="ProviderSelectionPanel" Spacing="8">
                     <CheckBox x:Name="ClaudeCheckBox" Content="Claude" Foreground="#FF8B78" />
                     <CheckBox x:Name="CodexCheckBox" Content="Codex" Foreground="#4AD1C0" />
@@ -32,8 +32,12 @@
                 </StackPanel>
                 <StackPanel x:Name="ClaudePanel" Spacing="8">
                     <TextBlock Text="Copy this status-line snippet, merge it into Claude Code settings, use Claude Code normally, then return here to recheck." TextWrapping="Wrap" />
+                    <TextBlock Text="Claude Code on Windows" />
                     <TextBox x:Name="ClaudeSnippetTextBox" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="100" />
-                    <Button Content="Copy" Click="OnCopyClicked" HorizontalAlignment="Left" />
+                    <Button Content="Copy Windows snippet" Click="OnCopyClicked" HorizontalAlignment="Left" />
+                    <TextBlock Text="Claude Code inside WSL" />
+                    <TextBox x:Name="ClaudeWslSnippetTextBox" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="100" />
+                    <Button Content="Copy WSL snippet" Click="OnCopyWslClicked" HorizontalAlignment="Left" />
                     <TextBlock x:Name="CopyStatusTextBlock" AutomationProperties.LiveSetting="Polite" />
                 </StackPanel>
                 <StackPanel x:Name="VerificationPanel" Spacing="8">

@@ -1,4 +1,7 @@
 <Project>
+  <PropertyGroup>
+    <Version>0.2.0-beta.1</Version>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(Platform)' == 'x64'">
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>

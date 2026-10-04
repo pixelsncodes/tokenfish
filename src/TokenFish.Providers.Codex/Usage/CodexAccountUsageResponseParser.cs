@@ -40,7 +40,14 @@ public sealed class CodexAccountUsageResponseParser
                 throw CreateMalformedResponseException();
             }
 
-            return new CodexAccountUsageSnapshot(ParseDailyUsageBuckets(resultElement));
+            return new CodexAccountUsageSnapshot(ParseDailyUsageBuckets(resultElement))
+            {
+                LifetimeTokens = ReadOptionalSummaryValue(summaryElement,"lifetimeTokens"),
+                PeakDailyTokens = ReadOptionalSummaryValue(summaryElement,"peakDailyTokens"),
+                LongestRunningTurnSec = ReadOptionalSummaryValue(summaryElement,"longestRunningTurnSec"),
+                CurrentStreakDays = ReadOptionalSummaryValue(summaryElement,"currentStreakDays"),
+                LongestStreakDays = ReadOptionalSummaryValue(summaryElement,"longestStreakDays")
+            };
         }
         catch (CodexAccountUsageResponseParseException)
         {
@@ -101,6 +108,13 @@ public sealed class CodexAccountUsageResponseParser
         }
 
         return buckets;
+    }
+
+    private static long? ReadOptionalSummaryValue(JsonElement summary,string name)
+    {
+        if(!summary.TryGetProperty(name,out var value)||value.ValueKind==JsonValueKind.Null) return null;
+        // Optional fields from newer runtimes must not make otherwise usable activity disappear.
+        return value.ValueKind==JsonValueKind.Number && value.TryGetInt64(out var result) && result>=0 ? result : null;
     }
 
     private static string ReadRequiredRequestId(JsonElement root)

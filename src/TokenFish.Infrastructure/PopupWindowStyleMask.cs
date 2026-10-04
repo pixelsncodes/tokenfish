@@ -18,4 +18,7 @@ public static class PopupWindowStyleMask
         WsMaximizeBox;
 
     public static nint RemovePopupNonClientFlags(nint style) => style & ~PopupNonClientFlags;
+
+    public static nint RemovePopupExtendedEdges(nint style) =>
+        style & ~(nint)(0x00000001 | 0x00000100 | 0x00000200 | 0x00020000);
 }

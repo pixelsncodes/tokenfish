@@ -19,6 +19,7 @@ public sealed record ProviderCardDisplayState
     public string FooterText { get; }
 
     public bool IsStale { get; }
+    public IReadOnlyList<DailyTokenActivity> DailyActivity { get; }
 
     public ProviderCardDisplayState(
         ProviderKind provider,
@@ -28,7 +29,8 @@ public sealed record ProviderCardDisplayState
         IReadOnlyList<PopupActivityDisplayState>? activityRows = null,
         string? emptyUsageMessage = null,
         string? footerText = null,
-        bool isStale = false)
+        bool isStale = false,
+        IReadOnlyList<DailyTokenActivity>? dailyActivity = null)
     {
         Provider = provider;
         ProviderName = providerName ?? throw new ArgumentNullException(nameof(providerName));
@@ -38,5 +40,6 @@ public sealed record ProviderCardDisplayState
         EmptyUsageMessage = emptyUsageMessage;
         FooterText = footerText ?? string.Empty;
         IsStale = isStale;
+        DailyActivity=dailyActivity?.ToArray() ?? [];
     }
 }

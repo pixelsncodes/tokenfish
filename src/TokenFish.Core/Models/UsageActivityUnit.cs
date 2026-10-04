@@ -2,5 +2,7 @@ namespace TokenFish.Core.Models;
 
 public enum UsageActivityUnit
 {
-    Tokens
+    Tokens,
+    Days,
+    Seconds
 }

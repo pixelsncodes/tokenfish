@@ -8,6 +8,16 @@ namespace TokenFish.Infrastructure.Tests;
 public sealed class LocalAppSettingsStoreTests
 {
     [Fact]
+    public async Task WidgetAndAppearanceRoundTripWithoutChangingProviderSettings()
+    {
+        using var directory=TemporaryDirectory.Create();var store=CreateStore(directory);
+        var settings=new AppSettings {ProviderSelectionMode=ProviderSelectionMode.Both,ThemeMode=ThemeMode.Light,
+            IsDesktopWidgetVisible=true,IsDesktopWidgetAlwaysOnTop=true,DesktopWidgetCorner=DesktopWidgetCorner.TopLeft,
+            DesktopWidgetMonitorX=-1200,DesktopWidgetMonitorY=250,CodexWslDistributionName="Ubuntu"};
+        await store.SaveAsync(settings,CancellationToken.None);
+        Assert.Equal(settings,await store.LoadAsync(CancellationToken.None));
+    }
+    [Fact]
     public async Task MissingFileReturnsExactDefaults()
     {
         using var directory = TemporaryDirectory.Create();
@@ -146,6 +156,11 @@ public sealed class LocalAppSettingsStoreTests
             [
                 "CodexRuntimeMode",
                 "CodexWslDistributionName",
+                "DesktopWidgetCorner",
+                "DesktopWidgetMonitorX",
+                "DesktopWidgetMonitorY",
+                "IsDesktopWidgetAlwaysOnTop",
+                "IsDesktopWidgetVisible",
                 "IsOnboardingCompleted",
                 "ProviderSelectionMode",
                 "SchemaVersion",

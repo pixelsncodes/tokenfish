@@ -11,6 +11,7 @@ public static class AppSettingsValidator
         EnsureDefined(settings.ProviderSelectionMode, nameof(settings.ProviderSelectionMode));
         EnsureDefined(settings.ThemeMode, nameof(settings.ThemeMode));
         EnsureDefined(settings.CodexRuntimeMode, nameof(settings.CodexRuntimeMode));
+        EnsureDefined(settings.DesktopWidgetCorner, nameof(settings.DesktopWidgetCorner));
 
         var distributionName = string.IsNullOrWhiteSpace(settings.CodexWslDistributionName)
             ? null

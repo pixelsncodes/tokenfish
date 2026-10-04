@@ -3,5 +3,8 @@ namespace TokenFish.Core.Models;
 public enum ThemeMode
 {
     Minimal,
-    Arcade
+    Arcade,
+    System,
+    Light,
+    Dark
 }

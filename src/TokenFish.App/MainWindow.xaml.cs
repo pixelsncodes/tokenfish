@@ -1,854 +1,224 @@
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Animation;
-using Microsoft.UI.Xaml.Shapes;
+using TokenFish.App.Platform;
+using TokenFish.Core.Models;
 using TokenFish.Infrastructure;
-using Windows.UI;
-using Windows.UI.ViewManagement;
 
 namespace TokenFish.App;
 
 public sealed partial class MainWindow : Window
 {
-    private const double PopupRailWidth = 300;
-    private const double FishWidth = 25;
-    private static readonly Brush PopupTextPrimaryBrush = GetPopupBrush("PopupTextPrimaryBrush");
-    private static readonly Brush PopupTextSecondaryBrush = GetPopupBrush("PopupTextSecondaryBrush");
     private readonly PopupDisplayStateUpdatePlanner _updatePlanner = new();
-    private readonly List<ProviderCardView> _providerCards = [];
+    private readonly List<ProviderView> _cards = [];
+    private TrayPopupDisplayState? _state;
     private bool _allowClose;
+    private bool _isSurfaceVisible;
+    public event Action? PopupDeactivated;
+    public event Action? PopupActivated;
+    public event Action? PopupCloseRequested;
+    public event Action? ContentSizeInvalidated;
+    public event Action? RefreshRequested;
+    public event Action? SettingsRequested;
+    public event Action? WidgetRequested;
 
     public MainWindow()
     {
         InitializeComponent();
-
-        InitializeIconSurfaces();
-        AppWindow.Closing += OnAppWindowClosing;
-        Activated += OnActivated;
-        Content.KeyDown += OnKeyDown;
+        if (ApplicationIconPath.TryResolveExistingWindowIcon(AppContext.BaseDirectory, out var path))
+            AppWindow.SetIcon(path);
+        AppWindow.Closing += (_, args) =>
+        {
+            if (!_allowClose) { args.Cancel = true; PopupCloseRequested?.Invoke(); }
+        };
+        Activated += (_, args) =>
+        {
+            PopupWindowPlacement.RemoveNativeFrameAfterShowing(this);
+            if (args.WindowActivationState == WindowActivationState.Deactivated) PopupDeactivated?.Invoke();
+            else PopupActivated?.Invoke();
+        };
+        Content.KeyDown += (_, args) =>
+        {
+            if (args.Key == Windows.System.VirtualKey.Escape) { PopupCloseRequested?.Invoke(); args.Handled = true; }
+        };
+        RootGrid.ActualThemeChanged += (_, _) => RebuildCards();
     }
-
-    public event Action? PopupDeactivated;
-
-    public event Action? PopupActivated;
-
-    public event Action? PopupCloseRequested;
-
-    public event Action? ContentSizeInvalidated;
-
-    public event Action? RefreshRequested;
-
-    public event Action? SettingsRequested;
 
     public void AllowClose() => _allowClose = true;
-
-    private void InitializeIconSurfaces()
+    internal void SetSurfaceVisible(bool visible)
     {
-        TrySetWindowIcon();
+        _isSurfaceVisible = visible;
+        foreach (var card in _cards) card.SetSurfaceVisible(visible);
     }
-
-    private void TrySetWindowIcon()
+    public void ApplySettings(AppSettings settings)
     {
-        if (!ApplicationIconPath.TryResolveExistingWindowIcon(
-            AppContext.BaseDirectory,
-            out var iconPath))
-        {
-            return;
-        }
-
-        try
-        {
-            AppWindow.SetIcon(iconPath);
-        }
-        catch
-        {
-        }
+        TokenFishAppearance.Apply(RootGrid, settings.ThemeMode);
+        WidgetButton.Content = settings.IsDesktopWidgetVisible ? "Hide desktop widget" : "Show desktop widget";
     }
 
     public void UpdateState(TrayPopupDisplayState state)
     {
+        _state = state;
         var plan = _updatePlanner.Plan(state);
-        SetTextIfChanged(StatusText, state.StatusText);
-        SetTextIfChanged(StatusBannerText, state.StatusText);
-        SetRefreshCommandState(state.RefreshCommandState);
-        var statusBannerVisibility = state.ApplicationState is
-            PopupApplicationDisplayState.StartupIssue or
-            PopupApplicationDisplayState.RefreshIssue or
-            PopupApplicationDisplayState.ShutdownIssue or
-            PopupApplicationDisplayState.ShellIssue
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-        SetVisibilityIfChanged(StatusBanner, statusBannerVisibility);
-
-        if (plan.RebuildProviderCards || _providerCards.Count != state.Providers.Count)
-        {
-            RebuildProviderCards(state.Providers);
-        }
-        else
-        {
-            for (var providerIndex = 0; providerIndex < state.Providers.Count; providerIndex++)
-            {
-                _providerCards[providerIndex].Update(state.Providers[providerIndex]);
-            }
-        }
-
-        if (plan.AffectsLayout)
-        {
-            ContentSizeInvalidated?.Invoke();
-        }
+        StatusText.Text = state.StatusText;
+        StatusBannerText.Text = state.StatusText;
+        StatusBanner.Visibility = state.ApplicationState is PopupApplicationDisplayState.StartupIssue or
+            PopupApplicationDisplayState.RefreshIssue or PopupApplicationDisplayState.ShellIssue or PopupApplicationDisplayState.ShutdownIssue
+            ? Visibility.Visible : Visibility.Collapsed;
+        RefreshNowButton.IsEnabled = state.RefreshCommandState.IsEnabled;
+        RefreshCommandStatusText.Text = state.RefreshCommandState.StatusText ?? "";
+        RefreshCommandStatusText.Visibility = string.IsNullOrWhiteSpace(state.RefreshCommandState.StatusText) ? Visibility.Collapsed : Visibility.Visible;
+        if (plan.RebuildProviderCards || _cards.Count != state.Providers.Count) RebuildCards();
+        else for (var i = 0; i < _cards.Count; i++) _cards[i].Update(state.Providers[i]);
+        if (plan.AffectsLayout) ContentSizeInvalidated?.Invoke();
     }
 
     public double MeasurePreferredHeightEffectivePixels()
     {
-        RootGrid.Measure(new Windows.Foundation.Size(
-            PopupWindowLayoutCalculator.WidthEffectivePixels,
-            double.PositiveInfinity));
-
+        RootGrid.Measure(new Windows.Foundation.Size(PopupWindowLayoutCalculator.WidthEffectivePixels, double.PositiveInfinity));
         return Math.Ceiling(RootGrid.DesiredSize.Height);
     }
 
-    private void RebuildProviderCards(IReadOnlyList<ProviderCardDisplayState> providers)
+    private void RebuildCards()
     {
-        ProvidersPanel.Children.Clear();
-        _providerCards.Clear();
-        foreach (var provider in providers)
+        if (_state is null) return;
+        var expanded = _cards.Where(card => card.Activity.IsExpanded).Select(card => card.Provider).ToHashSet();
+        _cards.Clear(); ProvidersPanel.Children.Clear();
+        foreach (var provider in _state.Providers)
         {
-            var providerView = CreateProviderCard(provider);
-            _providerCards.Add(providerView);
-            ProvidersPanel.Children.Add(providerView.Root);
+            var card = new ProviderView(RootGrid, provider, () => ContentSizeInvalidated?.Invoke());
+            card.Activity.IsExpanded = expanded.Contains(provider.Provider);
+            card.SetSurfaceVisible(_isSurfaceVisible);
+            _cards.Add(card); ProvidersPanel.Children.Add(card.Root);
         }
     }
 
-    private static ProviderCardView CreateProviderCard(ProviderCardDisplayState provider)
+    private void OnSettingsClicked(object sender, RoutedEventArgs args) => SettingsRequested?.Invoke();
+    private void OnRefreshNowClicked(object sender, RoutedEventArgs args) => RefreshRequested?.Invoke();
+    private void OnHideClicked(object sender, RoutedEventArgs args) => PopupCloseRequested?.Invoke();
+    private void OnWidgetClicked(object sender, RoutedEventArgs args) => WidgetRequested?.Invoke();
+
+    private sealed class ProviderView
     {
-        var accent = GetProviderAccent(provider.Provider);
-        var card = new Border
-        {
-            Padding = new Thickness(14, 12, 14, 12),
-            CornerRadius = new CornerRadius(12),
-            BorderThickness = new Thickness(1),
-            BorderBrush = CreateBrush(0xFF, 0x29, 0x38, 0x4A),
-            Background = CreateBrush(0xFF, 0x12, 0x1B, 0x26)
-        };
-
-        var stack = new StackPanel { Spacing = 8 };
-        card.Child = stack;
-
-        var header = CreateProviderHeader(provider, accent);
-        stack.Children.Add(header.Root);
-
-        var quotaViews = new List<QuotaWindowView>(provider.QuotaWindows.Count);
-        foreach (var quotaWindow in provider.QuotaWindows)
-        {
-            var quotaView = CreateQuotaWindowSection(quotaWindow, accent);
-            quotaViews.Add(quotaView);
-            stack.Children.Add(quotaView.Root);
-        }
-
-        UIElement? activitySection = null;
-        IReadOnlyList<ActivityRowView> activityViews = [];
-        if (provider.ActivityRows.Count > 0)
-        {
-            var activityView = CreateActivitySection(provider.ActivityRows);
-            activitySection = activityView.Root;
-            activityViews = activityView.ActivityRows;
-            stack.Children.Add(activitySection);
-        }
-
-        TextBlock? emptyUsageMessage = null;
-        if (provider.EmptyUsageMessage is not null)
-        {
-            emptyUsageMessage = new TextBlock
-            {
-                Text = provider.EmptyUsageMessage,
-                Foreground = PopupTextSecondaryBrush,
-                TextWrapping = TextWrapping.WrapWholeWords
-            };
-            stack.Children.Add(emptyUsageMessage);
-        }
-
-        TextBlock? footer = null;
-        if (!string.IsNullOrWhiteSpace(provider.FooterText))
-        {
-            footer = CreateFooter(provider.FooterText);
-            stack.Children.Add(footer);
-        }
-
-        return new ProviderCardView(
-            card,
-            provider,
-            header,
-            quotaViews,
-            activityViews,
-            emptyUsageMessage,
-            footer);
-    }
-
-    private static ProviderHeaderView CreateProviderHeader(ProviderCardDisplayState provider, Brush accent)
-    {
-        var grid = new Grid { ColumnSpacing = 12 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var nameRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
-        nameRow.Children.Add(new Border
-        {
-            Width = 7,
-            Height = 7,
-            CornerRadius = new CornerRadius(4),
-            Background = accent,
-            VerticalAlignment = VerticalAlignment.Center,
-            IsHitTestVisible = false
-        });
-        var name = new TextBlock
-        {
-            Text = provider.ProviderName,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            FontSize = 15,
-            Foreground = PopupTextPrimaryBrush,
-            TextTrimming = TextTrimming.CharacterEllipsis
-        };
-        AutomationProperties.SetHeadingLevel(
-            name,
-            Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2);
-        nameRow.Children.Add(name);
-        grid.Children.Add(nameRow);
-
-        var connection = new TextBlock
-        {
-            Text = provider.ConnectionState,
-            Foreground = PopupTextSecondaryBrush,
-            TextAlignment = TextAlignment.Right,
-            TextWrapping = TextWrapping.NoWrap
-        };
-        AutomationProperties.SetName(connection, $"Connection {provider.ConnectionState}");
-        Grid.SetColumn(connection, 1);
-        grid.Children.Add(connection);
-
-        return new ProviderHeaderView(grid, name, connection);
-    }
-
-    private static QuotaWindowView CreateQuotaWindowSection(
-        PopupQuotaWindowDisplayState quotaWindow,
-        Brush accent)
-    {
-        var stack = new StackPanel { Spacing = 5 };
-
-        var header = new Grid { ColumnSpacing = 10 };
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var label = new TextBlock
-        {
-            Text = quotaWindow.Label,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = PopupTextPrimaryBrush,
-            TextWrapping = TextWrapping.WrapWholeWords
-        };
-        header.Children.Add(label);
-
-        var percentageText = new TextBlock
-        {
-            Text = quotaWindow.PercentageText,
-            FontSize = 18,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = accent,
-            TextWrapping = TextWrapping.NoWrap
-        };
-        Grid.SetColumn(percentageText, 1);
-        header.Children.Add(percentageText);
-        stack.Children.Add(header);
-
-        var rail = CreateQuotaRail(quotaWindow, accent);
-        stack.Children.Add(rail.Root);
-
-        TextBlock? relativeReset = null;
-        if (quotaWindow.RelativeResetText is not null)
-        {
-            relativeReset = new TextBlock
-            {
-                Text = quotaWindow.RelativeResetText,
-                Margin = new Thickness(0, 2, 0, 0),
-                Foreground = PopupTextPrimaryBrush,
-                TextWrapping = TextWrapping.WrapWholeWords
-            };
-            stack.Children.Add(relativeReset);
-        }
-
-        TextBlock? exactReset = null;
-        if (quotaWindow.ExactResetText is not null)
-        {
-            exactReset = new TextBlock
-            {
-                Text = quotaWindow.ExactResetText,
-                Foreground = PopupTextSecondaryBrush,
-                TextWrapping = TextWrapping.WrapWholeWords
-            };
-            stack.Children.Add(exactReset);
-        }
-
-        return new QuotaWindowView(
-            stack,
-            quotaWindow,
-            label,
-            percentageText,
-            rail,
-            relativeReset,
-            exactReset);
-    }
-
-    private static QuotaRailView CreateQuotaRail(
-        PopupQuotaWindowDisplayState quotaWindow,
-        Brush accent)
-    {
-        const double railWidth = PopupRailWidth;
-        const double fishWidth = FishWidth;
-        var canvas = new Canvas
-        {
-            Width = railWidth,
-            Height = 22,
-            IsHitTestVisible = false
-        };
-        AutomationProperties.SetAccessibilityView(canvas, AccessibilityView.Raw);
-        canvas.Children.Add(new Border
-        {
-            Width = railWidth,
-            Height = 4,
-            CornerRadius = new CornerRadius(2),
-            Background = CreateBrush(0xFF, 0x29, 0x38, 0x4A),
-            Margin = new Thickness(0, 9, 0, 0)
-        });
-        var railRemainder = new Border
-        {
-            Height = 4,
-            CornerRadius = new CornerRadius(2),
-            Background = accent,
-            Margin = new Thickness(0, 9, 0, 0)
-        };
-        AutomationProperties.SetAccessibilityView(railRemainder, AccessibilityView.Raw);
-        canvas.Children.Add(railRemainder);
-
-        var neutralPelletBrush = CreateBrush(0xFF, 0x79, 0x8A, 0x9E);
-        var providerPelletBrush = CreateContrastPelletBrush(accent);
-        var pellets = new List<Ellipse>(12);
-        for (var index = 0; index < 12; index++)
-        {
-            var pellet = new Ellipse
-            {
-                Width = 3,
-                Height = 3,
-                Fill = neutralPelletBrush,
-                Opacity = 0.8
-            };
-            Canvas.SetLeft(pellet, 12 + (index * 23));
-            Canvas.SetTop(pellet, 9.5);
-            AutomationProperties.SetAccessibilityView(pellet, AccessibilityView.Raw);
-            canvas.Children.Add(pellet);
-            pellets.Add(pellet);
-        }
-
-        var fish = new Canvas { Width = fishWidth, Height = 25 };
-        AutomationProperties.SetAccessibilityView(fish, AccessibilityView.Raw);
-        var tail = new Polygon
-        {
-            Points = CreateFishBodyPoints(isOpenMouth: true),
-            Fill = accent
-        };
-        Canvas.SetLeft(tail, 1);
-        Canvas.SetTop(tail, 1);
-        AutomationProperties.SetAccessibilityView(tail, AccessibilityView.Raw);
-        fish.Children.Add(tail);
-        var fin = new Rectangle
-        {
-            Width = 8,
-            Height = 8,
-            Fill = accent,
-            Opacity = 0.8,
-            RenderTransform = new RotateTransform { Angle = 45, CenterX = 4, CenterY = 4 }
-        };
-        Canvas.SetLeft(fin, -3);
-        Canvas.SetTop(fin, 9);
-        AutomationProperties.SetAccessibilityView(fin, AccessibilityView.Raw);
-        fish.Children.Add(fin);
-        var eye = new Rectangle
-        {
-            Width = 4,
-            Height = 4,
-            Fill = CreateBrush(0xFF, 0x07, 0x10, 0x16)
-        };
-        Canvas.SetLeft(eye, 10);
-        Canvas.SetTop(eye, 6);
-        AutomationProperties.SetAccessibilityView(eye, AccessibilityView.Raw);
-        fish.Children.Add(eye);
-        canvas.Children.Add(fish);
-        Canvas.SetTop(fish, -1.5);
-        StartFishMouthAnimation(tail);
-
-        var view = new QuotaRailView(
-            canvas,
-            fish,
-            railRemainder,
-            pellets,
-            neutralPelletBrush,
-            providerPelletBrush,
-            railWidth,
-            fishWidth);
-        view.Update(quotaWindow);
-        return view;
-    }
-
-    private static Brush GetProviderAccent(TokenFish.Core.Models.ProviderKind provider) =>
-        provider == TokenFish.Core.Models.ProviderKind.Claude
-            ? CreateBrush(0xFF, 0xFF, 0x88, 0x5A)
-            : CreateBrush(0xFF, 0x52, 0xD6, 0xD0);
-
-    private static Brush CreateBrush(byte alpha, byte red, byte green, byte blue) =>
-        new SolidColorBrush(Color.FromArgb(alpha, red, green, blue));
-
-    private static Brush CreateContrastPelletBrush(Brush accent)
-    {
-        var color = ((SolidColorBrush)accent).Color;
-        return CreateBrush(
-            0xFF,
-            Lighten(color.R),
-            Lighten(color.G),
-            Lighten(color.B));
-    }
-
-    private static byte Lighten(byte value) =>
-        (byte)(value + ((0xFF - value) * 0.45));
-
-    private static Brush GetPopupBrush(string resourceKey) =>
-        (Brush)Application.Current.Resources[resourceKey];
-
-    private static PointCollection CreateFishBodyPoints(bool isOpenMouth) => new()
-    {
-        new Windows.Foundation.Point(0, 0),
-        new Windows.Foundation.Point(17.94, 0),
-        new Windows.Foundation.Point(23, isOpenMouth ? 7.82 : 10.12),
-        new Windows.Foundation.Point(isOpenMouth ? 16.79 : 18.86, 11.5),
-        new Windows.Foundation.Point(23, isOpenMouth ? 15.18 : 12.88),
-        new Windows.Foundation.Point(17.94, 23),
-        new Windows.Foundation.Point(0, 23),
-        new Windows.Foundation.Point(2.76, 14.26),
-        new Windows.Foundation.Point(0, 11.5),
-        new Windows.Foundation.Point(2.76, 8.74)
-    };
-
-    private static void StartFishMouthAnimation(Polygon body)
-    {
-        if (!FishAnimationSettings.ShouldAnimate(SystemAnimationsEnabled()))
-        {
-            return;
-        }
-
-        var animation = new ObjectAnimationUsingKeyFrames
-        {
-            Duration = TimeSpan.FromMilliseconds(340),
-            RepeatBehavior = RepeatBehavior.Forever,
-            EnableDependentAnimation = true
-        };
-        animation.KeyFrames.Add(new DiscreteObjectKeyFrame
-        {
-            KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero),
-            Value = CreateFishBodyPoints(isOpenMouth: true)
-        });
-        animation.KeyFrames.Add(new DiscreteObjectKeyFrame
-        {
-            KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(170)),
-            Value = CreateFishBodyPoints(isOpenMouth: false)
-        });
-        var storyboard = new Storyboard();
-        Storyboard.SetTarget(animation, body);
-        Storyboard.SetTargetProperty(animation, "Points");
-        storyboard.Children.Add(animation);
-        storyboard.Begin();
-    }
-
-    private static bool SystemAnimationsEnabled()
-    {
-        try
-        {
-            return new UISettings().AnimationsEnabled;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static ActivitySectionView CreateActivitySection(IReadOnlyList<PopupActivityDisplayState> activityRows)
-    {
-        var stack = new StackPanel { Spacing = 6 };
-        stack.Children.Add(new TextBlock
-        {
-            Text = "Additional activity",
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = PopupTextPrimaryBrush,
-            Margin = new Thickness(0, 4, 0, 0)
-        });
-
-        var rows = new List<ActivityRowView>(activityRows.Count);
-        foreach (var activity in activityRows)
-        {
-            var row = CreateActivityRow(activity);
-            rows.Add(row);
-            stack.Children.Add(row.Root);
-        }
-
-        return new ActivitySectionView(stack, rows);
-    }
-
-    private static ActivityRowView CreateActivityRow(PopupActivityDisplayState activity)
-    {
-        var grid = new Grid { ColumnSpacing = 12 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        AutomationProperties.SetName(grid, activity.AutomationName);
-
-        var labelText = activity.IntervalText is null
-            ? activity.Label
-            : $"{activity.Label} · {activity.IntervalText}";
-        var label = new TextBlock
-        {
-            Text = labelText,
-            Foreground = PopupTextPrimaryBrush,
-            TextWrapping = TextWrapping.WrapWholeWords
-        };
-        grid.Children.Add(label);
-
-        var valueBlock = new TextBlock
-        {
-            Text = activity.ValueText,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = PopupTextPrimaryBrush,
-            TextAlignment = TextAlignment.Right,
-            TextWrapping = TextWrapping.NoWrap
-        };
-        Grid.SetColumn(valueBlock, 1);
-        grid.Children.Add(valueBlock);
-
-        return new ActivityRowView(grid, activity, label, valueBlock);
-    }
-
-    private static TextBlock CreateFooter(string footerText) =>
-        new TextBlock
-        {
-            Text = footerText,
-            Foreground = PopupTextSecondaryBrush,
-            FontSize = 12,
-            Margin = new Thickness(0, 4, 0, 0),
-            TextWrapping = TextWrapping.WrapWholeWords
-        };
-
-    private static void SetTextIfChanged(TextBlock textBlock, string? text)
-    {
-        text ??= string.Empty;
-        if (textBlock.Text != text)
-        {
-            textBlock.Text = text;
-        }
-    }
-
-    private static void SetVisibilityIfChanged(UIElement element, Visibility visibility)
-    {
-        if (element.Visibility != visibility)
-        {
-            element.Visibility = visibility;
-        }
-    }
-
-    private void SetRefreshCommandState(ManualRefreshCommandState state)
-    {
-        RefreshNowButton.IsEnabled = state.IsEnabled;
-        SetTextIfChanged(RefreshCommandStatusText, state.StatusText);
-        SetVisibilityIfChanged(
-            RefreshCommandStatusText,
-            string.IsNullOrWhiteSpace(state.StatusText)
-                ? Visibility.Collapsed
-                : Visibility.Visible);
-    }
-
-    private sealed class ProviderCardView
-    {
-        public ProviderCardView(
-            Border root,
-            ProviderCardDisplayState state,
-            ProviderHeaderView header,
-            IReadOnlyList<QuotaWindowView> quotaWindows,
-            IReadOnlyList<ActivityRowView> activityRows,
-            TextBlock? emptyUsageMessage,
-            TextBlock? footer)
-        {
-            Root = root;
-            State = state;
-            Header = header;
-            QuotaWindows = quotaWindows;
-            ActivityRows = activityRows;
-            EmptyUsageMessage = emptyUsageMessage;
-            Footer = footer;
-        }
-
+        public ProviderKind Provider { get; }
         public Border Root { get; }
+        public Expander Activity { get; }
+        private readonly TextBlock _connection;
+        private readonly TextBlock _footer;
+        private readonly TextBlock _empty;
+        private readonly List<(TextBlock Label, TextBlock Remaining, FishQuotaRail Rail, TextBlock Used, TextBlock Reset)> _quotas = [];
+        private readonly List<(TextBlock Label, TextBlock Value)> _activity = [];
+        private readonly StackPanel _daily = new() { Spacing = 8 };
+        private readonly FrameworkElement _themeRoot;
 
-        private ProviderCardDisplayState State { get; set; }
+        public ProviderView(FrameworkElement themeRoot, ProviderCardDisplayState state, Action invalidate)
+        {
+            Provider = state.Provider;
+            _themeRoot=themeRoot;
+            var stack = new StackPanel { Spacing = 12 };
+            Root = new Border { Padding = new(15), CornerRadius = new(12), Background = TokenFishAppearance.Brush(themeRoot,"Raised"), Child = stack };
+            TextBlock Text(string value, bool muted = false, double size = 12) => new()
+            {
+                Text = value, FontSize = size, TextWrapping = TextWrapping.Wrap,
+                Foreground = TokenFishAppearance.Brush(themeRoot,muted ? "Muted" : "Text")
+            };
+            Grid Pair(FrameworkElement left, FrameworkElement right)
+            {
+                var grid = new Grid { ColumnSpacing = 8 };
+                grid.ColumnDefinitions.Add(new() { Width = new(1,GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+                grid.Children.Add(left); Grid.SetColumn(right,1); grid.Children.Add(right); return grid;
+            }
+            var name = Text(state.ProviderName,false,14); name.FontWeight = FontWeights.SemiBold;
+            AutomationProperties.SetHeadingLevel(name,AutomationHeadingLevel.Level2);
+            _connection = Text(state.ConnectionState,true);
+            stack.Children.Add(Pair(name,_connection));
+            foreach (var quota in state.QuotaWindows)
+            {
+                var label = Text(quota.Label,true);
+                var remaining = Text(quota.RemainingText,false,19); remaining.FontWeight = FontWeights.SemiBold;
+                var rail = new FishQuotaRail(state.Provider);
+                var used = Text(quota.PercentageText,true,11);
+                var reset = Text(quota.RelativeResetText ?? "Reset time unavailable",true,11);
+                stack.Children.Add(Pair(label,remaining)); stack.Children.Add(rail); stack.Children.Add(Pair(used,reset));
+                _quotas.Add((label,remaining,rail,used,reset));
+            }
+            var activityStack = new StackPanel { Spacing = 10 };
+            foreach (var metric in state.ActivityRows)
+            {
+                var label = Text(metric.Label,true); var value = Text(metric.ValueText);
+                activityStack.Children.Add(Pair(label,value));
+                _activity.Add((label,value));
+            }
+            Activity = new Expander { Header = $"{state.ProviderName} activity", HorizontalAlignment = HorizontalAlignment.Stretch,
+                Content = activityStack, Visibility = _activity.Count > 0 ? Visibility.Visible : Visibility.Collapsed };
+            activityStack.Children.Add(_daily);
+            activityStack.Children.Add(Text("Token activity is separate from quota. Daily intervals use UTC.",true,11));
+            Activity.Expanding += (_, _) => invalidate(); Activity.Collapsed += (_, _) => invalidate();
+            Activity.SizeChanged += (_, _) => invalidate();
+            stack.Children.Add(Activity);
+            _empty = Text("",true); stack.Children.Add(_empty);
+            _footer = Text("",true,11); stack.Children.Add(_footer);
+            Update(state);
+        }
 
-        private ProviderHeaderView Header { get; }
-
-        private IReadOnlyList<QuotaWindowView> QuotaWindows { get; }
-
-        private IReadOnlyList<ActivityRowView> ActivityRows { get; }
-
-        private TextBlock? EmptyUsageMessage { get; }
-
-        private TextBlock? Footer { get; }
+        public void SetSurfaceVisible(bool visible)
+        {
+            foreach (var quota in _quotas) quota.Rail.SetSurfaceVisible(visible);
+        }
 
         public void Update(ProviderCardDisplayState state)
         {
-            Header.Update(state);
-
-            for (var quotaIndex = 0; quotaIndex < state.QuotaWindows.Count; quotaIndex++)
+            _connection.Text = state.IsStale ? $"{state.ConnectionState} · Stale" : state.ConnectionState;
+            _footer.Text = state.FooterText;
+            _footer.Visibility = string.IsNullOrEmpty(state.FooterText) ? Visibility.Collapsed : Visibility.Visible;
+            _empty.Text = state.EmptyUsageMessage ?? "";
+            _empty.Visibility = state.EmptyUsageMessage is null ? Visibility.Collapsed : Visibility.Visible;
+            for (var i=0; i<_quotas.Count; i++)
             {
-                QuotaWindows[quotaIndex].Update(state.QuotaWindows[quotaIndex]);
+                var data = state.QuotaWindows[i]; var ui = _quotas[i];
+                ui.Label.Text = data.Label; ui.Remaining.Text = data.RemainingText; ui.Rail.Update(data);
+                ui.Used.Text = data.PercentageText; ui.Reset.Text = data.RelativeResetText ?? "Reset time unavailable";
+                ToolTipService.SetToolTip(ui.Reset,data.ExactResetText);
+                AutomationProperties.SetName(ui.Remaining,$"{data.Label}: {data.RemainingText}");
             }
-
-            for (var activityIndex = 0; activityIndex < state.ActivityRows.Count; activityIndex++)
+            for (var i=0; i<_activity.Count; i++)
             {
-                ActivityRows[activityIndex].Update(state.ActivityRows[activityIndex]);
+                var data = state.ActivityRows[i]; var ui = _activity[i];
+                ui.Label.Text = data.IntervalText is null ? data.Label : $"{data.Label} · {data.IntervalText}";
+                ui.Value.Text = data.ValueText; AutomationProperties.SetName(ui.Value,data.AutomationName);
             }
+            RenderDailyActivity(state);
+        }
 
-            if (EmptyUsageMessage is not null)
+        private void RenderDailyActivity(ProviderCardDisplayState state)
+        {
+            _daily.Children.Clear();
+            if(state.DailyActivity.Count==0) return;
+            var today=DateOnly.FromDateTime(DateTime.UtcNow);
+            var todayTokens=state.DailyActivity.FirstOrDefault(day=>day.Date==today)?.Tokens;
+            _daily.Children.Add(new TextBlock {Text=todayTokens is {} value ? $"Today (UTC) · {value:N0} tokens" : "Today (UTC) · Not reported",
+                Foreground=TokenFishAppearance.Brush(_themeRoot,"Text"),FontSize=12});
+            var chart=new Grid {ColumnSpacing=8,Height=90};
+            var max=Math.Max(1,state.DailyActivity.Max(day=>day.Tokens));
+            for(var i=0;i<7;i++)
             {
-                SetTextIfChanged(EmptyUsageMessage, state.EmptyUsageMessage);
+                chart.ColumnDefinitions.Add(new(){Width=new(1,GridUnitType.Star)});
+                var date=today.AddDays(i-6); var tokens=state.DailyActivity.FirstOrDefault(day=>day.Date==date)?.Tokens;
+                var column=new StackPanel {Spacing=5,VerticalAlignment=VerticalAlignment.Bottom};
+                var bar=new Border {Height=tokens is {} count ? Math.Max(2,60.0*count/max) : 2,CornerRadius=new(3),
+                    Background=TokenFishAppearance.Brush(_themeRoot,tokens is null ? "Track" : "Codex")};
+                var tip=tokens is {} reported ? $"{date:yyyy-MM-dd} (UTC): {reported:N0} tokens" : $"{date:yyyy-MM-dd} (UTC): not reported";
+                ToolTipService.SetToolTip(column,tip); AutomationProperties.SetName(column,tip);
+                column.Children.Add(bar);column.Children.Add(new TextBlock {Text=date.Day.ToString(),FontSize=11,HorizontalAlignment=HorizontalAlignment.Center,
+                    Foreground=TokenFishAppearance.Brush(_themeRoot,"Muted")});
+                Grid.SetColumn(column,i);chart.Children.Add(column);
             }
-
-            if (Footer is not null)
-            {
-                SetTextIfChanged(Footer, state.FooterText);
-            }
-
-            State = state;
+            _daily.Children.Add(chart);
+            _daily.Children.Add(new TextBlock {Text="Latest seven UTC dates · Gray marks mean not reported",TextWrapping=TextWrapping.Wrap,FontSize=11,
+                Foreground=TokenFishAppearance.Brush(_themeRoot,"Muted")});
         }
-    }
-
-    private sealed class ProviderHeaderView
-    {
-        public ProviderHeaderView(Grid root, TextBlock name, TextBlock connection)
-        {
-            Root = root;
-            Name = name;
-            Connection = connection;
-        }
-
-        public Grid Root { get; }
-
-        private TextBlock Name { get; }
-
-        private TextBlock Connection { get; }
-
-        public void Update(ProviderCardDisplayState state)
-        {
-            SetTextIfChanged(Name, state.ProviderName);
-            SetTextIfChanged(Connection, state.ConnectionState);
-            AutomationProperties.SetName(Connection, $"Connection {state.ConnectionState}");
-        }
-    }
-
-    private sealed class QuotaWindowView
-    {
-        public QuotaWindowView(
-            StackPanel root,
-            PopupQuotaWindowDisplayState state,
-            TextBlock label,
-            TextBlock percentageText,
-            QuotaRailView rail,
-            TextBlock? relativeReset,
-            TextBlock? exactReset)
-        {
-            Root = root;
-            State = state;
-            Label = label;
-            PercentageText = percentageText;
-            Rail = rail;
-            RelativeReset = relativeReset;
-            ExactReset = exactReset;
-        }
-
-        public StackPanel Root { get; }
-
-        private PopupQuotaWindowDisplayState State { get; set; }
-
-        private TextBlock Label { get; }
-
-        private TextBlock PercentageText { get; }
-
-        private QuotaRailView Rail { get; }
-
-        private TextBlock? RelativeReset { get; }
-
-        private TextBlock? ExactReset { get; }
-
-        public void Update(PopupQuotaWindowDisplayState state)
-        {
-            SetTextIfChanged(Label, state.Label);
-            SetTextIfChanged(PercentageText, state.PercentageText);
-            Rail.Update(state);
-
-            if (RelativeReset is not null)
-            {
-                SetTextIfChanged(RelativeReset, state.RelativeResetText);
-            }
-
-            if (ExactReset is not null)
-            {
-                SetTextIfChanged(ExactReset, state.ExactResetText);
-            }
-
-            State = state;
-        }
-    }
-
-    private sealed class QuotaRailView
-    {
-        public QuotaRailView(
-            Canvas root,
-            Canvas crawler,
-            Border remainder,
-            IReadOnlyList<Ellipse> pellets,
-            Brush neutralPelletBrush,
-            Brush providerPelletBrush,
-            double railWidth,
-            double crawlerWidth)
-        {
-            Root = root;
-            _crawler = crawler;
-            _remainder = remainder;
-            _pellets = pellets;
-            _neutralPelletBrush = neutralPelletBrush;
-            _providerPelletBrush = providerPelletBrush;
-            _railWidth = railWidth;
-            _crawlerWidth = crawlerWidth;
-        }
-
-        private readonly Canvas _crawler;
-        private readonly Border _remainder;
-        private readonly IReadOnlyList<Ellipse> _pellets;
-        private readonly Brush _neutralPelletBrush;
-        private readonly Brush _providerPelletBrush;
-        private readonly double _railWidth;
-        private readonly double _crawlerWidth;
-
-        public Canvas Root { get; }
-
-        public void Update(PopupQuotaWindowDisplayState state)
-        {
-            var crawlerOffset = QuotaRailPositionCalculator.CalculateCrawlerOffset(
-                state.ProgressValue,
-                _railWidth,
-                _crawlerWidth);
-            Canvas.SetLeft(_crawler, crawlerOffset);
-
-            var remainderStart = crawlerOffset + _crawlerWidth;
-            Canvas.SetLeft(_remainder, remainderStart);
-            _remainder.Width = Math.Max(0, _railWidth - remainderStart);
-
-            foreach (var pellet in _pellets)
-            {
-                var isAheadOfFish = Canvas.GetLeft(pellet) >= remainderStart;
-                pellet.Fill = isAheadOfFish ? _providerPelletBrush : _neutralPelletBrush;
-                pellet.Opacity = isAheadOfFish ? 1 : 0.8;
-            }
-        }
-    }
-
-    private sealed record ActivitySectionView(
-        StackPanel Root,
-        IReadOnlyList<ActivityRowView> ActivityRows);
-
-    private sealed class ActivityRowView
-    {
-        public ActivityRowView(
-            Grid root,
-            PopupActivityDisplayState state,
-            TextBlock label,
-            TextBlock value)
-        {
-            Root = root;
-            State = state;
-            Label = label;
-            Value = value;
-        }
-
-        public Grid Root { get; }
-
-        private PopupActivityDisplayState State { get; set; }
-
-        private TextBlock Label { get; }
-
-        private TextBlock Value { get; }
-
-        public void Update(PopupActivityDisplayState state)
-        {
-            var labelText = state.IntervalText is null
-                ? state.Label
-                : $"{state.Label} · {state.IntervalText}";
-            SetTextIfChanged(Label, labelText);
-            SetTextIfChanged(Value, state.ValueText);
-            if (State.AutomationName != state.AutomationName)
-            {
-                AutomationProperties.SetName(Root, state.AutomationName);
-            }
-
-            State = state;
-        }
-    }
-
-    private void OnActivated(object sender, WindowActivatedEventArgs args)
-    {
-        if (args.WindowActivationState == WindowActivationState.Deactivated)
-        {
-            PopupDeactivated?.Invoke();
-            return;
-        }
-
-        PopupActivated?.Invoke();
-    }
-
-    private void OnKeyDown(object sender, KeyRoutedEventArgs args)
-    {
-        if (args.Key == Windows.System.VirtualKey.Escape)
-        {
-            args.Handled = true;
-            PopupCloseRequested?.Invoke();
-        }
-    }
-
-    private void OnRefreshNowClicked(object sender, RoutedEventArgs args)
-    {
-        _ = sender;
-        _ = args;
-        RefreshRequested?.Invoke();
-    }
-
-    private void OnSettingsClicked(object sender, RoutedEventArgs args)
-    {
-        _ = sender;
-        _ = args;
-        SettingsRequested?.Invoke();
-    }
-
-    private void OnAppWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
-    {
-        if (_allowClose)
-        {
-            return;
-        }
-
-        args.Cancel = true;
-        PopupCloseRequested?.Invoke();
     }
 }

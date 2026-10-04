@@ -21,6 +21,19 @@ internal static class SettingsWindowPlacementService
             return;
         }
 
+        if (preferredAnchor is { } invocation)
+        {
+            var area = GetPreferredDisplayArea(invocation);
+            var scale = SettingsWindowSizing.GetRasterizationScale(window);
+            var beside = SettingsWindowPositionCalculator.CalculateBeside(
+                ToWorkArea(area.WorkArea, isPrimary: true),
+                new(windowRectangle.Width, windowRectangle.Height),
+                new(invocation.X, invocation.Y, invocation.Width, invocation.Height),
+                SettingsWindowLayoutCalculator.EffectiveToPhysicalPixels(12, scale));
+            Move(window, beside.Rectangle);
+            return;
+        }
+
         var reused = TryReuseLastPosition(window, windowRectangle);
         if (reused)
         {
@@ -56,6 +69,9 @@ internal static class SettingsWindowPlacementService
     public static RectInt32 GetTargetWorkArea(Window window, RectInt32? preferredAnchor)
     {
         ArgumentNullException.ThrowIfNull(window);
+
+        if (preferredAnchor is { } invocation)
+            return GetPreferredDisplayArea(invocation).WorkArea;
 
         var lastRectangle = GetReusableLastRectangle();
         if (lastRectangle is not null)

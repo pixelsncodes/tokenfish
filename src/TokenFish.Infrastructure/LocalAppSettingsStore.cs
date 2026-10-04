@@ -160,7 +160,12 @@ public sealed class LocalAppSettingsStore : IAppSettingsStore
             ProviderSelectionMode = settings.ProviderSelectionMode.ToString(),
             ThemeMode = settings.ThemeMode.ToString(),
             CodexRuntimeMode = settings.CodexRuntimeMode.ToString(),
-            CodexWslDistributionName = settings.CodexWslDistributionName
+            CodexWslDistributionName = settings.CodexWslDistributionName,
+            IsDesktopWidgetVisible = settings.IsDesktopWidgetVisible,
+            IsDesktopWidgetAlwaysOnTop = settings.IsDesktopWidgetAlwaysOnTop,
+            DesktopWidgetCorner = settings.DesktopWidgetCorner.ToString(),
+            DesktopWidgetMonitorX = settings.DesktopWidgetMonitorX,
+            DesktopWidgetMonitorY = settings.DesktopWidgetMonitorY
         };
 
     private static bool TryMapFromPersistence(
@@ -192,7 +197,13 @@ public sealed class LocalAppSettingsStore : IAppSettingsStore
             ProviderSelectionMode = providerSelectionMode,
             ThemeMode = themeMode,
             CodexRuntimeMode = codexRuntimeMode,
-            CodexWslDistributionName = persistedSettings.CodexWslDistributionName
+            CodexWslDistributionName = persistedSettings.CodexWslDistributionName,
+            IsDesktopWidgetVisible = persistedSettings.IsDesktopWidgetVisible,
+            IsDesktopWidgetAlwaysOnTop = persistedSettings.IsDesktopWidgetAlwaysOnTop,
+            DesktopWidgetCorner = TryParseDefinedEnum(persistedSettings.DesktopWidgetCorner, out DesktopWidgetCorner corner)
+                ? corner : DesktopWidgetCorner.BottomRight,
+            DesktopWidgetMonitorX = persistedSettings.DesktopWidgetMonitorX,
+            DesktopWidgetMonitorY = persistedSettings.DesktopWidgetMonitorY
         };
 
         return AppSettingsValidator.TryNormalize(candidateSettings, out settings);
@@ -231,6 +242,11 @@ public sealed class LocalAppSettingsStore : IAppSettingsStore
 
 internal sealed record PersistedAppSettings
 {
+    public bool IsDesktopWidgetVisible { get; init; }
+    public bool IsDesktopWidgetAlwaysOnTop { get; init; }
+    public string? DesktopWidgetCorner { get; init; }
+    public int? DesktopWidgetMonitorX { get; init; }
+    public int? DesktopWidgetMonitorY { get; init; }
     public int SchemaVersion { get; init; }
 
     public bool? IsOnboardingCompleted { get; init; }

@@ -44,6 +44,12 @@ public sealed class CodexSessionUsageCollector : IProviderUsageCollector, IAsync
             }
 
             var session = _session;
+            if (session is { IsHealthy: false })
+            {
+                _session = null;
+                await session.DisposeAsync().ConfigureAwait(false);
+                session = null;
+            }
             if (session is null)
             {
                 session = await _sessionFactory.StartAsync(
@@ -54,6 +60,16 @@ public sealed class CodexSessionUsageCollector : IProviderUsageCollector, IAsync
             }
 
             return await session.CollectAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // A failed/cancelled read can leave a partial JSON-RPC response on the pipe.
+            // Reconnect on the next scheduled refresh, never retry in a tight loop.
+            var failed = _session;
+            _session = null;
+            if (failed is not null)
+                await failed.DisposeAsync().ConfigureAwait(false);
+            throw;
         }
         finally
         {

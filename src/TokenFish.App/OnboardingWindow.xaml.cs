@@ -12,6 +12,8 @@ public sealed partial class OnboardingWindow : Window
     private readonly OnboardingFlowController _flow;
     private readonly IClipboardService _clipboard;
     private readonly string _claudeSnippet;
+    private readonly string _claudeWslSnippet;
+    private bool _rendering;
     private bool _terminalResult;
     private IOnboardingReadinessCoordinator? _readinessCoordinator;
     private AppSettings? _effectiveSettings;
@@ -22,10 +24,12 @@ public sealed partial class OnboardingWindow : Window
     public OnboardingWindow(
         OnboardingFlowController flow,
         string claudeSnippet,
-        IClipboardService? clipboard = null)
+        IClipboardService? clipboard = null,
+        string? claudeWslSnippet = null)
     {
         _flow = flow ?? throw new ArgumentNullException(nameof(flow));
         _claudeSnippet = claudeSnippet ?? throw new ArgumentNullException(nameof(claudeSnippet));
+        _claudeWslSnippet = claudeWslSnippet ?? claudeSnippet;
         _clipboard = clipboard ?? new WindowsClipboardService();
         InitializeComponent();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
@@ -68,6 +72,8 @@ public sealed partial class OnboardingWindow : Window
 
     private void OnBackClicked(object sender, RoutedEventArgs args)
     {
+        _verificationState = null;
+        _readinessCoordinator = null;
         _flow.Back();
         Render();
     }
@@ -87,7 +93,8 @@ public sealed partial class OnboardingWindow : Window
 
     public void ShowVerification(IOnboardingReadinessCoordinator coordinator, AppSettings effectiveSettings)
     {
-        if (!_lifetime.IsActive)
+        if (!_lifetime.IsActive || _flow.Step != OnboardingStep.Verification ||
+            _flow.CreatePendingSettings() != effectiveSettings)
         {
             return;
         }
@@ -150,6 +157,7 @@ public sealed partial class OnboardingWindow : Window
 
     private void OnRuntimeModeChanged(object sender, SelectionChangedEventArgs args)
     {
+        if (_rendering) return;
         if (RuntimeModeComboBox.SelectedItem is ComboBoxItem { Tag: string tag } &&
             Enum.TryParse<CodexRuntimeMode>(tag, out var mode))
         {
@@ -162,7 +170,7 @@ public sealed partial class OnboardingWindow : Window
     {
         try
         {
-            _clipboard.SetText(_claudeSnippet);
+            _clipboard.SetText(ClaudeSnippetTextBox.Text);
             CopyStatusTextBlock.Text = "Copied";
         }
         catch
@@ -171,9 +179,21 @@ public sealed partial class OnboardingWindow : Window
         }
     }
 
+    private void OnCopyWslClicked(object sender, RoutedEventArgs args)
+    {
+        try { _clipboard.SetText(_claudeWslSnippet); CopyStatusTextBlock.Text = "Copied WSL snippet"; }
+        catch { CopyStatusTextBlock.Text = "Copy failed. Select and copy the snippet manually."; }
+    }
+
     private void Render()
     {
-        StepTextBlock.Text = $"Step {(int)_flow.Step + 1} of 6";
+        _rendering = true;
+        foreach (ComboBoxItem item in RuntimeModeComboBox.Items)
+            if (item.Tag is string tag && tag == _flow.RuntimeMode.ToString()) RuntimeModeComboBox.SelectedItem = item;
+        WslDistributionTextBox.Text = _flow.WslDistributionName;
+        WslDistributionTextBox.IsEnabled = _flow.IsWslDistributionEnabled;
+        _rendering = false;
+        StepTextBlock.Text = $"Step {_flow.StepNumber} of {_flow.TotalSteps}";
         TitleTextBlock.Text = _flow.Step switch
         {
             OnboardingStep.Welcome => "Welcome to TokenFish",
@@ -197,6 +217,7 @@ public sealed partial class OnboardingWindow : Window
         ClaudePanel.Visibility = _flow.Step == OnboardingStep.ClaudeBridge ? Visibility.Visible : Visibility.Collapsed;
         VerificationPanel.Visibility = _flow.Step == OnboardingStep.Verification ? Visibility.Visible : Visibility.Collapsed;
         ClaudeSnippetTextBox.Text = _claudeSnippet;
+        ClaudeWslSnippetTextBox.Text = _claudeWslSnippet;
         ClaudeCheckBox.IsChecked = _flow.IsClaudeSelected;
         CodexCheckBox.IsChecked = _flow.IsCodexSelected;
         StatusTextBlock.Text = _flow.ValidationMessage;

@@ -9,8 +9,29 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
-            <SolidColorBrush x:Key="PopupTextPrimaryBrush" Color="#E7EDF6" />
-            <SolidColorBrush x:Key="PopupTextSecondaryBrush" Color="#B4C0D0" />
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="TokenFishSurfaceBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="TokenFishRaisedBrush" Color="#F3F5F8" />
+                    <SolidColorBrush x:Key="PopupTextPrimaryBrush" Color="#1B2531" />
+                    <SolidColorBrush x:Key="PopupTextSecondaryBrush" Color="#5E6A78" />
+                    <SolidColorBrush x:Key="TokenFishBrandBrush" Color="#607400" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="TokenFishSurfaceBrush" Color="#161A21" />
+                    <SolidColorBrush x:Key="TokenFishRaisedBrush" Color="#20252E" />
+                    <SolidColorBrush x:Key="PopupTextPrimaryBrush" Color="#EDF1F7" />
+                    <SolidColorBrush x:Key="PopupTextSecondaryBrush" Color="#A3ADBC" />
+                    <SolidColorBrush x:Key="TokenFishBrandBrush" Color="#DDF87B" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="TokenFishSurfaceBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="TokenFishRaisedBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="PopupTextPrimaryBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="PopupTextSecondaryBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="TokenFishBrandBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

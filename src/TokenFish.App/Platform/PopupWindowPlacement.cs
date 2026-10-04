@@ -9,6 +9,8 @@ namespace TokenFish.App.Platform;
 
 internal static class PopupWindowPlacement
 {
+    private static readonly NativeMethods.SubclassProcedure BorderlessProcedure = ProcessBorderlessMessage;
+
     public static void Configure(Window window)
     {
         ArgumentNullException.ThrowIfNull(window);
@@ -22,11 +24,33 @@ internal static class PopupWindowPlacement
         presenter.IsMinimizable = configuration.IsMinimizable;
 
         var handle = WindowNative.GetWindowHandle(window);
+        if (!NativeMethods.SetWindowSubclass(handle, BorderlessProcedure, 1, 0))
+            System.Diagnostics.Debug.WriteLine("TokenFish: borderless client-area hook failed.");
         RemoveDwmBorder(handle);
         var extendedStyle = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GwlExStyle);
-        extendedStyle &= ~NativeMethods.WsExAppWindow;
-        extendedStyle |= NativeMethods.WsExToolWindow;
+        if (Environment.GetCommandLineArgs().Contains("--inspect-windows", StringComparer.OrdinalIgnoreCase))
+        {
+            // Opt-in development inspection: make borderless surfaces discoverable to desktop tools.
+            extendedStyle &= ~NativeMethods.WsExToolWindow;
+            extendedStyle |= NativeMethods.WsExAppWindow;
+        }
+        else
+        {
+            extendedStyle &= ~NativeMethods.WsExAppWindow;
+            extendedStyle |= NativeMethods.WsExToolWindow;
+        }
         NativeMethods.SetWindowLongPtr(handle, NativeMethods.GwlExStyle, extendedStyle);
+    }
+
+    private static nint ProcessBorderlessMessage(nint hwnd, uint message, nint wParam, nint lParam,
+        nuint subclassId, nuint referenceData)
+    {
+        // WM_NCCALCSIZE: the client must occupy the complete borderless window.
+        // Merely hiding the presenter chrome can leave a native rim on WinUI windows.
+        if (message == 0x0083 && wParam != 0) return 0;
+        if (message == 0x0082)
+            NativeMethods.RemoveWindowSubclass(hwnd, BorderlessProcedure, subclassId);
+        return NativeMethods.DefSubclassProc(hwnd, message, wParam, lParam);
     }
 
     private static void RemoveDwmBorder(nint handle)
@@ -38,12 +62,20 @@ internal static class PopupWindowPlacement
 
         try
         {
+            // These surfaces draw their whole client area; DWM must not add a native rim.
+            var nonClientPolicy = NativeMethods.DwmNcrpDisabled;
+            var policyResult = NativeMethods.DwmSetWindowAttribute(handle,
+                NativeMethods.DwmwaNcRenderingPolicy, ref nonClientPolicy, (uint)Marshal.SizeOf<uint>());
+            if (policyResult < 0)
+                System.Diagnostics.Debug.WriteLine($"TokenFish: DWM frame policy failed (0x{policyResult:X8}).");
             var borderColor = NativeMethods.DwmColorNone;
-            _ = NativeMethods.DwmSetWindowAttribute(
+            var result = NativeMethods.DwmSetWindowAttribute(
                 handle,
                 NativeMethods.DwmwaBorderColor,
                 ref borderColor,
                 (uint)Marshal.SizeOf<uint>());
+            if (result < 0)
+                System.Diagnostics.Debug.WriteLine($"TokenFish: DWM border preference failed (0x{result:X8}).");
         }
         catch (DllNotFoundException)
         {
@@ -79,6 +111,8 @@ internal static class PopupWindowPlacement
 
         window.AppWindow.Resize(new SizeInt32(layout.Size.Width, layout.Size.Height));
         window.AppWindow.Move(new PointInt32(layout.Position.X, layout.Position.Y));
+        // AppWindow placement can refresh its native frame after the first show.
+        RemoveNativeFrameAfterShowing(window);
     }
 
     public static bool BringToForeground(Window window)
@@ -115,7 +149,18 @@ internal static class PopupWindowPlacement
             }
         }
 
-        _ = NativeMethods.SetWindowPos(
+        Marshal.SetLastPInvokeError(0);
+        var extendedStyle = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GwlExStyle);
+        if (extendedStyle == 0 && Marshal.GetLastPInvokeError() != 0) return false;
+        var maskedExtendedStyle = PopupWindowStyleMask.RemovePopupExtendedEdges(extendedStyle);
+        if (extendedStyle != maskedExtendedStyle)
+        {
+            Marshal.SetLastPInvokeError(0);
+            NativeMethods.SetWindowLongPtr(handle, NativeMethods.GwlExStyle, maskedExtendedStyle);
+            if (Marshal.GetLastPInvokeError() != 0) return false;
+        }
+
+        var updated = NativeMethods.SetWindowPos(
             handle,
             0,
             0,
@@ -128,11 +173,19 @@ internal static class PopupWindowPlacement
             NativeMethods.SwpNoActivate |
             NativeMethods.SwpFrameChanged);
         RemoveDwmBorder(handle);
-        return true;
+        if (!updated)
+            System.Diagnostics.Debug.WriteLine($"TokenFish: native frame update failed ({Marshal.GetLastPInvokeError()}).");
+        return updated;
     }
 
     public static bool IsForeground(Window window) =>
         NativeMethods.GetForegroundWindow() == WindowNative.GetWindowHandle(window);
+
+    public static void DragWindow(Window window)
+    {
+        NativeMethods.ReleaseCapture();
+        NativeMethods.SendMessage(WindowNative.GetWindowHandle(window), 0x00A1, 2, 0);
+    }
 
     private static RectInt32 GetFallbackAnchor(Window window)
     {
@@ -158,11 +211,29 @@ internal static class PopupWindowPlacement
 
     private static class NativeMethods
     {
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate nint SubclassProcedure(nint hwnd, uint message, nint wParam, nint lParam,
+            nuint subclassId, nuint referenceData);
+        [DllImport("comctl32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SetWindowSubclass(nint hwnd, SubclassProcedure procedure, nuint subclassId, nuint referenceData);
+        [DllImport("comctl32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool RemoveWindowSubclass(nint hwnd, SubclassProcedure procedure, nuint subclassId);
+        [DllImport("comctl32.dll")]
+        public static extern nint DefSubclassProc(nint hwnd, uint message, nint wParam, nint lParam);
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool ReleaseCapture();
+        [DllImport("user32.dll")]
+        public static extern nint SendMessage(nint hwnd, uint message, nint wParam, nint lParam);
         public const int GwlStyle = -16;
         public const int GwlExStyle = -20;
         public const nint WsExAppWindow = 0x00040000;
         public const nint WsExToolWindow = 0x00000080;
         public const uint DwmwaBorderColor = 34;
+        public const uint DwmwaNcRenderingPolicy = 2;
+        public const uint DwmNcrpDisabled = 1;
         public const uint DwmColorNone = 0xFFFFFFFE;
         public const uint SwpNoSize = 0x0001;
         public const uint SwpNoMove = 0x0002;

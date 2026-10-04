@@ -19,7 +19,8 @@ public sealed class CodexUsageSnapshotFactory
         ArgumentNullException.ThrowIfNull(accountUsage);
 
         var quotaWindows = CreateQuotaWindows(rateLimits, capturedAt);
-        var activityMetrics = CreateActivityMetrics(accountUsage, capturedAt);
+        var activityMetrics = CreateActivityMetrics(accountUsage, capturedAt).ToList();
+        AddSummaryMetrics(activityMetrics,accountUsage,capturedAt);
         var compatibilityUsageWindow = CreateCompatibilityUsageWindow(quotaWindows);
         var compatibilityTokenMetric = CreateCompatibilityTokenMetric(activityMetrics);
 
@@ -32,7 +33,8 @@ public sealed class CodexUsageSnapshotFactory
             compatibilityTokenMetric,
             capturedAt,
             quotaWindows,
-            activityMetrics);
+            activityMetrics,
+            dailyActivity: accountUsage.DailyUsageBuckets?.Select(bucket=>new DailyTokenActivity(bucket.StartDate,bucket.Tokens)).ToArray());
     }
 
     private static IReadOnlyList<NormalizedQuotaWindow> CreateQuotaWindows(
@@ -54,8 +56,9 @@ public sealed class CodexUsageSnapshotFactory
         var windows = new List<NormalizedQuotaWindow>();
         foreach (var bucket in buckets)
         {
-            AddWindow(windows, bucket.LimitId, "primary", bucket.Primary, capturedAt);
-            AddWindow(windows, bucket.LimitId, "secondary", bucket.Secondary, capturedAt);
+            var name=buckets.Count>1 ? bucket.LimitName ?? bucket.LimitId : bucket.LimitName;
+            AddWindow(windows, bucket.LimitId, "primary", bucket.Primary, capturedAt,name);
+            AddWindow(windows, bucket.LimitId, "secondary", bucket.Secondary, capturedAt,name);
         }
 
         return windows;
@@ -66,7 +69,8 @@ public sealed class CodexUsageSnapshotFactory
         string? limitId,
         string windowKind,
         CodexRateLimitWindow window,
-        DateTimeOffset capturedAt)
+        DateTimeOffset capturedAt,
+        string? bucketName = null)
     {
         if (!window.IsAvailable)
         {
@@ -74,6 +78,11 @@ public sealed class CodexUsageSnapshotFactory
         }
 
         var (displayLabel, labelOrigin) = CreateDurationLabel(window.WindowDurationMins);
+        if(!string.IsNullOrWhiteSpace(bucketName))
+        {
+            displayLabel=$"{bucketName.Trim()} · {displayLabel ?? windowKind}";
+            labelOrigin=UsageMetricLabelOrigin.ProviderSupplied;
+        }
         windows.Add(
             new NormalizedQuotaWindow(
                 ProviderKind.Codex,
@@ -252,5 +261,20 @@ public sealed class CodexUsageSnapshotFactory
                 metric.Authority,
                 metric.Freshness)
             : TokenCountMetric.Unavailable(DataAuthority.TokenFishDerived, DataFreshness.Unknown);
+    }
+
+    private static void AddSummaryMetrics(List<NormalizedActivityMetric> metrics,CodexAccountUsageSnapshot usage,DateTimeOffset capturedAt)
+    {
+        void Add(string id,string label,long? value,UsageActivityUnit unit)
+        {
+            if(value is null or <0) return;
+            metrics.Add(new(ProviderKind.Codex,"codex:summary:"+id,label,UsageMetricLabelOrigin.ProviderSupplied,value,unit,
+                null,null,UsageMetricAvailability.Available,capturedAt,DataAuthority.LocalProviderReported,DataFreshness.Live,AccountUsageSource));
+        }
+        Add("lifetime-tokens","Lifetime tokens",usage.LifetimeTokens,UsageActivityUnit.Tokens);
+        Add("peak-daily-tokens","Peak daily tokens",usage.PeakDailyTokens,UsageActivityUnit.Tokens);
+        Add("longest-turn","Longest turn",usage.LongestRunningTurnSec,UsageActivityUnit.Seconds);
+        Add("current-streak","Current streak",usage.CurrentStreakDays,UsageActivityUnit.Days);
+        Add("longest-streak","Longest streak",usage.LongestStreakDays,UsageActivityUnit.Days);
     }
 }

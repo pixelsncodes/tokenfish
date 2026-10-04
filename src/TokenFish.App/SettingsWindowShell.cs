@@ -20,7 +20,11 @@ internal sealed class SettingsWindowShell : ISettingsWindowShell
 
     public void Show() => _window.Activate();
 
-    public void Activate() => PopupWindowPlacement.BringToForeground(_window);
+    public void Activate()
+    {
+        _window.RepositionForInvocation();
+        PopupWindowPlacement.BringToForeground(_window);
+    }
 
     public void Close()
     {
