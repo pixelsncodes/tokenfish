@@ -4,6 +4,8 @@
 
 The approved redesign is implemented as **0.2.0-beta.1**: animated fish/pellet rails, both providers, optional persisted corner widget, adjacent Settings placement, live System/Light/Dark appearance, corrected setup routes, bounded Codex requests and recovery, Claude weekly quota, and optional Codex activity summaries. The latest x64 build is clean and all **825 tests pass**. Local portable packaging and a Windows CI workflow are available. See [the current validation record](releases/0.2.0-beta.1.md) for desktop evidence and public-release gates.
 
+The GitHub README now includes product mockups, an animated widget demo, promo artwork, development notes, and a data-flow guide. The first [Windows CI run](https://github.com/pixelsncodes/tokenfish/actions/runs/37178951115) passed all 825 tests and uploaded the portable candidate/checksums. This is a workflow artifact, not a published GitHub release.
+
 This candidate has not been pushed or published. It is unsigned, with no installer. License selection and the remaining manual/clean-machine checks precede public release. The record below describes the earlier MVP, including historical checks; it does not establish a visual pass for the new widget or redesign.
 
 ## Completion
