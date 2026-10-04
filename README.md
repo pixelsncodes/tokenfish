@@ -39,6 +39,14 @@ These are illustrative mockups of the current beta using **sample data**, not ac
   </tr>
 </table>
 
+### Codex activity
+
+Expand **Codex activity** for token totals and a chart of the latest seven UTC dates. Lifetime tokens, peak daily tokens, streaks, and longest turn appear only when the installed provider reports them. Gray chart marks mean **not reported**, rather than zero; token activity is separate from remaining quota.
+
+<a href="docs/media/codex-activity.png"><img src="docs/media/codex-activity.png" alt="Expanded Codex activity mockup with sample token totals, provider-reported summaries, and seven daily bars. A gray mark represents an unreported day." width="420"></a>
+
+[See the activity view beside the desktop widget](docs/media/codex-activity-desktop.png). These previews use a Codex-only configuration and synthetic sample data.
+
 <details>
   <summary><strong>Settings: Connections, Desktop, and Appearance</strong></summary>
 
